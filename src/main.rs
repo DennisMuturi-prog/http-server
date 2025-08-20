@@ -1,32 +1,35 @@
 use std::{
     collections::HashMap,
     error::Error,
-    io::{self, Result as IoResult, prelude::*},
+    io::{Result as IoResult, prelude::*},
     net::{TcpListener, TcpStream},
     thread,
 };
 
 fn main() -> IoResult<()> {
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    loop {
-        let (connection, _) = listener.accept().unwrap();
-        match request_from_reader(connection) {
-            Ok(parsed_request) => {
-                println!("parsed Request:{:?}", parsed_request);
-                match String::from_utf8(parsed_request.body) {
-                    Ok(parsed_body) => {
-                        println!("parsed body:{}", parsed_body);
-                    }
-                    Err(_) => {
-                        println!("failed to parse body");
-                    }
-                };
+    let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
+    for stream in listener.incoming() {
+        println!("new fetch");
+        let stream = stream.unwrap();
+        thread::spawn(||{
+            match request_from_reader(stream) {
+                Ok(parsed_request) => {
+                    println!("parsed Request:{:?}", parsed_request);
+                    match String::from_utf8(parsed_request.body) {
+                        Ok(parsed_body) => {
+                            println!("parsed body:{}", parsed_body);
+                        }
+                        Err(_) => {
+                            println!("failed to parse body");
+                        }
+                    };
+                }
+                Err(err) => {
+                    println!("err:{:?}", err);
+                }
             }
-            Err(err) => {
-                println!("err:{:?}", err);
-                break;
-            }
-        }
+
+        });
     }
     // for stream in listener.incoming() {
     //     let stream = stream.unwrap();
@@ -61,14 +64,14 @@ fn main() -> IoResult<()> {
 }
 
 fn request_from_reader(mut stream: TcpStream) -> Result<Request, Box<dyn Error>> {
-    let mut buf = [0; 1];
+    let mut buf = [0; 1024];
     let mut my_bytes = Vec::<u8>::with_capacity(120);
     let mut no_of_bytes_parsed = 0;
     let mut request = Request::default();
     let mut request_line_parsed = 0;
     let mut n = stream.read(&mut buf)?;
     my_bytes.append(&mut buf[..n].to_vec());
-
+    println!("hit 1:{}",n);
     loop {
         if request_line_parsed == 0 {
             match request.parse(&my_bytes) {
@@ -115,13 +118,25 @@ fn request_from_reader(mut stream: TcpStream) -> Result<Request, Box<dyn Error>>
                         no_of_bytes_parsed += 2;
                         request.add_bytes_to_body(&my_bytes[no_of_bytes_parsed..]);
                         request_line_parsed = 2;
-                        let content_length = request
-                            .headers
-                            .get("content-length")
-                            .ok_or("error occurred")?
-                            .parse::<usize>()?;
+                        let content_length = match request.headers.get("content-length") {
+                            Some(content_len) => content_len,
+                            None => {
+                                if request.request_line.method=="OPTIONS"{
+                                    let response = "HTTP/1.1 204\r\nAccess-Control-Allow-Origin: https://hoppscotch.io\r\nAccess-Control-Allow-Methods: *\r\nAccess-Control-Allow-Headers: *\r\n\r\n";
+                                    stream.write_all(response.as_bytes()).unwrap();
+                                    return Ok(request);
+
+                                }else{
+                                    let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: https://hoppscotch.io\r\nContent-Length: 5\r\n\r\nhello";
+                                    stream.write_all(response.as_bytes()).unwrap();
+                                    return Ok(request);
+
+                                }
+                            }
+                        }
+                        .parse::<usize>()?;
                         if request.body.len() >= content_length {
-                            let response = "HTTP/1.1 200 OK\r\n\r\n";
+                            let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: https://hoppscotch.io\r\n\r\n";
                             stream.write_all(response.as_bytes()).unwrap();
                             return Ok(request);
                         }
@@ -152,7 +167,7 @@ fn request_from_reader(mut stream: TcpStream) -> Result<Request, Box<dyn Error>>
                 .ok_or("error occurred")?
                 .parse::<usize>()?;
             if request.body.len() >= content_length {
-                let response = "HTTP/1.1 200 OK\r\n\r\n";
+                let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: https://hoppscotch.io\r\n\r\n";
                 stream.write_all(response.as_bytes()).unwrap();
                 return Ok(request);
             }
@@ -185,6 +200,10 @@ struct RequestLine {
 }
 impl Request {
     fn parse(&mut self, request_line: &Vec<u8>) -> Result<usize, ParseError> {
+        if request_line.is_empty(){
+            println!("request line empty");
+            return Err(ParseError::OtherError);
+        }
         let lines: Vec<_> = request_line.lines().collect();
         // println!("lines:{:?}",request_line);
         if lines.len() == 1 {
