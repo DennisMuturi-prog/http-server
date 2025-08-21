@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{Result as IoResult, Write},
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
 };
 
 use crate::{
@@ -18,9 +18,8 @@ impl<F> Server<F>
 where
     F: Fn(ResponseWriter, Request) -> Response,
 {
-    pub fn serve(port: usize, handler: F) -> IoResult<Self> {
-        let formatted_addr = format!("127.0.0.1:{port}");
-        let listener = TcpListener::bind(&formatted_addr)?;
+    pub fn serve(port: u16, handler: F) -> IoResult<Self> {
+        let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
         Ok(Server { listener, handler })
     }
     fn handle(&self, mut connection: TcpStream) -> IoResult<()> {
@@ -98,13 +97,13 @@ fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
     ])
 }
 
-pub fn get_common_headers() -> HashMap<String, String> {
+pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
     HashMap::from([
         (
-            "Access-Control-Allow-Origin".to_string(),
-            "https://hoppscotch.io".to_string(),
+            "Access-Control-Allow-Origin",
+            "https://hoppscotch.io",
         ),
-        ("Connection".to_string(), "close".to_string()),
+        ("Connection", "close"),
     ])
 }
 

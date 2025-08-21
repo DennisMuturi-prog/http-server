@@ -1,6 +1,6 @@
 use std::{collections::HashMap};
 
-use crate::server::StatusCode;
+use crate::server::{get_common_headers, StatusCode};
 
 pub struct ResponseWriter<'a> {
     bytes: &'a mut Vec<u8>,
@@ -26,8 +26,10 @@ impl<'a> ResponseWriter<'a> {
 pub struct Headers<'a> {
     bytes: &'a mut Vec<u8>,
 }
+
 impl<'a> Headers<'a> {
-    pub fn write_headers(self, headers: HashMap<String, String>) -> Body<'a>{
+    pub fn write_default_headers(self) -> Body<'a>{
+        let headers=get_common_headers();
         let mut headers_response = String::new();
         for (key, value) in headers {
             headers_response.push_str(&key);
@@ -39,6 +41,28 @@ impl<'a> Headers<'a> {
         Body {
             bytes: self.bytes,
         }
+    }
+    pub fn write_headers(self,custom_headers:HashMap<&str,&str>)->Body<'a>{
+        let mut headers_response = String::new();
+        let mut headers=get_common_headers();
+        for (key, value) in custom_headers {
+            let lower_key=key.to_lowercase();
+            if lower_key=="content-type" || lower_key=="content-length" || lower_key=="connection"{
+                continue;
+            }
+            headers.insert(key, value);
+        }
+        for (key, value) in headers {
+            headers_response.push_str(&key);
+            headers_response.push_str(": ");
+            headers_response.push_str(&value);
+            headers_response.push_str("\r\n");
+        }
+        self.bytes.extend_from_slice(headers_response.as_bytes());
+        Body {
+            bytes: self.bytes,
+        }
+
     }
 }
 pub struct Body<'a> {

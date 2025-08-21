@@ -1,25 +1,23 @@
 use std::{
     collections::HashMap,
     error::Error,
-    io::{Cursor, Read},
+    io::{ Cursor, Read},
     net::TcpStream,
 };
 
-use crate::chunked_parsing::{find_field_line_index, find_payload_index, is_valid_field_name};
-
-pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Error>> {
+pub fn response_from_reader(stream: &mut TcpStream) -> Result<Response, Box<dyn Error>> {
     let mut buf = [0; 1024];
     let mut my_bytes = Vec::<u8>::with_capacity(120);
     let mut no_of_bytes_parsed = 0;
-    let mut request = Request::default();
-    let mut request_line_parsed = 0;
+    let mut response = Response::default();
+    let mut response_line_parsed = 0;
     let mut n = stream.read(&mut buf)?;
     my_bytes.append(&mut buf[..n].to_vec());
     loop {
-        if request_line_parsed == 0 {
-            match request.parse_front(&my_bytes) {
+        if response_line_parsed==0{
+            match response.parse_front(&my_bytes) {
                 Ok(_) => {
-                    request_line_parsed = 1;
+                    response_line_parsed = 1;
                 }
                 Err(err) => match err {
                     ParseError::NotEnoughBytes => {
@@ -32,8 +30,8 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     ParseError::InvalidHeader(cause) => {
                         return Err(cause.into());
                     }
-                    ParseError::RequestLinePartsMissing => {
-                        return Err("parts of request line missing and could not be parsed".into());
+                    ParseError::ResponseLinePartsMissing => {
+                        return Err("parts of response line missing and could not be parsed".into());
                     }
                     ParseError::MissingHttpVersion => {
                         return Err("the version of http could not be parsed".into());
@@ -41,16 +39,14 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     ParseError::HeadersDone => {
                         return Err("the version of http could not be parsed".into());
                     }
-                    ParseError::InvalidHttpMethod => {
-                        return Err("Invalid http verb".into());
-
-                    },
                 },
             };
-        } else if request_line_parsed == 1 {
-            match request.parse(&my_bytes) {
+
+        }
+        else if response_line_parsed == 1 {
+            match response.parse(&my_bytes) {
                 Ok(no) => {
-                    request_line_parsed = 2;
+                    response_line_parsed = 2;
                     no_of_bytes_parsed += no;
                 }
                 Err(err) => match err {
@@ -64,8 +60,8 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     ParseError::InvalidHeader(cause) => {
                         return Err(cause.into());
                     }
-                    ParseError::RequestLinePartsMissing => {
-                        return Err("parts of request line missing and could not be parsed".into());
+                    ParseError::ResponseLinePartsMissing => {
+                        return Err("parts of response line missing and could not be parsed".into());
                     }
                     ParseError::MissingHttpVersion => {
                         return Err("the version of http could not be parsed".into());
@@ -73,14 +69,10 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     ParseError::HeadersDone => {
                         return Err("the version of http could not be parsed".into());
                     }
-                    ParseError::InvalidHttpMethod => {
-                        return Err("Invalid http verb".into());
-
-                    },
                 },
             };
-        } else if request_line_parsed == 2 {
-            match request.parse_request_headers(&my_bytes[no_of_bytes_parsed..]) {
+        } else if response_line_parsed == 2 {
+            match response.parse_response_headers(&my_bytes[no_of_bytes_parsed..]) {
                 Ok(no) => {
                     no_of_bytes_parsed += no;
                 }
@@ -90,30 +82,29 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                         my_bytes.append(&mut buf[..n].to_vec());
                     }
                     ParseError::HeadersDone => {
-                        println!("Request;{:?}", request);
-                        request.add_bytes_to_body(&my_bytes[request.body_cursor..]);
-                        request_line_parsed = 3;
-                        let content_length = match request.headers.get("content-length") {
+                        response.add_bytes_to_body(&my_bytes[response.body_cursor..]);
+                        response_line_parsed = 3;
+                        let content_length = match response.headers.get("content-length") {
                             Some(content_len) => content_len,
                             None => {
                                 let transfer_encoding_chunked =
-                                    match request.headers.get("transfer-encoding") {
+                                    match response.headers.get("transfer-encoding") {
                                         Some(chunking) => chunking,
                                         None => {
-                                            return Ok(request);
+                                            return Ok(response);
                                         }
                                     };
                                 if transfer_encoding_chunked == "chunked" {
-                                    request_line_parsed = 4;
+                                    response_line_parsed = 4;
                                 } else {
-                                    return Ok(request);
+                                    return Ok(response);
                                 }
                                 continue;
                             }
                         }
                         .parse::<usize>()?;
-                        if request.body.len() >= content_length {
-                            return Ok(request);
+                        if response.body.len() >= content_length {
+                            return Ok(response);
                         }
                     }
                     ParseError::OtherError => {
@@ -122,64 +113,60 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     ParseError::InvalidHeader(cause) => {
                         return Err(cause.into());
                     }
-                    ParseError::RequestLinePartsMissing => {
-                        return Err("parts of request missing and could not be parsed".into());
+                    ParseError::ResponseLinePartsMissing => {
+                        return Err("parts of response missing and could not be parsed".into());
                     }
                     ParseError::MissingHttpVersion => {
                         return Err("the version of http could not be parsed".into());
                     }
-                    ParseError::InvalidHttpMethod => {
-                        return Err("Invalid http verb".into());
-
-                    },
                 },
             };
-        } else if request_line_parsed == 3 {
+        } else if response_line_parsed == 3 {
             n = stream.read(&mut buf)?;
-            request.add_bytes_to_body(&buf[..n]);
-            let content_length = request
+            response.add_bytes_to_body(&buf[..n]);
+            let content_length = response
                 .headers
                 .get("content-length")
                 .ok_or("error occurred")?
                 .parse::<usize>()?;
-            if request.body.len() >= content_length {
-                return Ok(request);
+            if response.body.len() >= content_length {
+                return Ok(response);
             }
-        } else {
-            if request.data_content_part {
-                if request.current_chunk.len() == 0 {
+        } else { 
+            if response.data_content_part {
+                if response.current_chunk.len() == 0 {
                     n = stream.read(&mut buf)?;
-                    request.body.extend_from_slice(&buf[..n]);
+                    response.body.extend_from_slice(&buf[..n]);
                 }
-                match request.add_chunked_body_content() {
+                match response.add_chunked_body_content() {
                     Ok(_) => {}
                     Err(err) => match err {
                         ParseError::NotEnoughBytes => {
                             n = stream.read(&mut buf)?;
-                            request.current_chunk.extend_from_slice(&buf[..n]);
+                            response.current_chunk.extend_from_slice(&buf[..n]);
                         }
                         ParseError::HeadersDone => {
-                            return Ok(request);
+                            return Ok(response);
                         }
-                        _ => return Ok(request),
+                        _ => return Ok(response),
                     },
                 }
             } else {
-                if request.body.len() == 0 {
+                if response.body.len() == 0 {
                     n = stream.read(&mut buf)?;
-                    request.body.extend_from_slice(&buf[..n]);
+                    response.body.extend_from_slice(&buf[..n]);
                 }
-                match request.parse_chunked_body() {
+                match response.parse_chunked_body() {
                     Ok(_) => {}
                     Err(err) => match err {
                         ParseError::NotEnoughBytes => {
                             n = stream.read(&mut buf)?;
-                            request.body.extend_from_slice(&buf[..n]);
+                            response.body.extend_from_slice(&buf[..n]);
                         }
                         ParseError::HeadersDone => {
-                            return Ok(request);
+                            return Ok(response);
                         }
-                        _ => return Ok(request),
+                        _ => return Ok(response),
                     },
                 }
             }
@@ -190,80 +177,86 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
 #[derive(Debug)]
 enum ParseError {
     NotEnoughBytes,
-    RequestLinePartsMissing,
+    ResponseLinePartsMissing,
     OtherError,
     MissingHttpVersion,
     InvalidHeader(String),
     HeadersDone,
-    InvalidHttpMethod,
 }
 
 #[derive(Debug, Default)]
-pub struct Request {
-    request_line: RequestLine,
+pub struct Response {
+    response_line: ResponseLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
     chunked_body: Vec<u8>,
     data_content_part: bool,
     bytes_to_retrieve: usize,
     current_chunk: Vec<u8>,
-    current_position: usize,
-    body_cursor: usize,
+    current_position:usize,
+    body_cursor:usize
 }
-
-impl Request {
-    fn parse_front(&mut self, request_line: &[u8]) -> Result<usize, ParseError> {
-        let first_index_of_body = match find_payload_index(request_line) {
+#[derive(Debug, Default)]
+struct ResponseLine {
+    http_version: String,
+    status_code: String,
+    status_message: String,
+}
+impl Response{
+    fn parse_front(&mut self, response_line: &[u8]) -> Result<usize, ParseError> {
+        let first_index_of_body = match find_payload_index(response_line) {
             Some(index) => index,
             None => {
                 return Err(ParseError::NotEnoughBytes);
             }
         };
-        self.body_cursor = first_index_of_body;
+        self.body_cursor=first_index_of_body;
         Ok(first_index_of_body)
     }
-    fn parse(&mut self, request_line: &[u8]) -> Result<usize, ParseError> {
-        if request_line.is_empty() {
-            println!("request line empty");
+    fn parse(&mut self, response_line: &[u8]) -> Result<usize, ParseError> {
+
+        if response_line.is_empty() {
+            println!("response line empty");
             return Err(ParseError::OtherError);
         }
-        let next_field_line_index = find_field_line_index(request_line).unwrap_or(0);
-        self.current_position += next_field_line_index;
-        let mut cursor = Cursor::new(&request_line[..next_field_line_index - 2]);
-        let mut request_line_str = String::new();
+        let next_field_line_index = find_field_line_index(response_line).unwrap_or(0);
+        self.current_position+=next_field_line_index;
+        let mut cursor = Cursor::new(&response_line[..next_field_line_index-2]);
+        let mut response_line_str = String::new();
         cursor
-            .read_to_string(&mut request_line_str)
+            .read_to_string(&mut response_line_str)
             .map_err(|_| ParseError::OtherError)?;
         let parsed_line =
-            parse_request_line(&request_line_str).map_err(|_| ParseError::OtherError)?;
-        self.request_line = parsed_line;
+            parse_response_line(&response_line_str).map_err(|_| ParseError::OtherError)?;
+        self.response_line = parsed_line;
         Ok(next_field_line_index)
     }
-    fn parse_request_headers(&mut self, request_line: &[u8]) -> Result<usize, ParseError> {
-        if self.current_position >= self.body_cursor - 2 {
+    fn parse_response_headers(&mut self, response_line: &[u8]) -> Result<usize, ParseError> {
+        if self.current_position>=self.body_cursor-2{
             return Err(ParseError::HeadersDone);
         }
-        let next_field_line_index = find_field_line_index(request_line).unwrap_or(0);
-        self.current_position += next_field_line_index;
-        let mut cursor = Cursor::new(&request_line[..next_field_line_index - 2]);
-        let mut request_line_str = String::new();
+        let next_field_line_index = find_field_line_index(response_line).unwrap_or(0);
+        self.current_position+=next_field_line_index;
+        let mut cursor = Cursor::new(&response_line[..next_field_line_index-2]);
+        let mut response_line_str = String::new();
         cursor
-            .read_to_string(&mut request_line_str)
+            .read_to_string(&mut response_line_str)
             .map_err(|_| ParseError::OtherError)?;
-        let parsed_line = parse_headers(&request_line_str)?;
+        let parsed_line =
+            parse_headers(&response_line_str)?;
         let (key, value) = parsed_line;
         self.add_header(key, value);
         Ok(next_field_line_index)
     }
     fn parse_chunked_body(&mut self) -> Result<usize, ParseError> {
-        let next_body_data_index = match find_field_line_index(&self.body) {
+        let next_body_data_index = match find_field_line_index(&self.body){
             Some(index) => index,
             None => {
                 return Err(ParseError::NotEnoughBytes);
-            }
+            },
         };
         let mut body_chunk_size_str = String::new();
-        let mut cursor = Cursor::new(&self.body[..next_body_data_index - 2]);
+        let mut cursor = Cursor::new(&self.body[..next_body_data_index-2]);
 
         cursor
             .read_to_string(&mut body_chunk_size_str)
@@ -280,23 +273,22 @@ impl Request {
         Ok(next_body_data_index)
     }
     fn add_chunked_body_content(&mut self) -> Result<usize, ParseError> {
-        let next_body_data_size_index = match find_field_line_index(&self.current_chunk) {
+        let next_body_data_size_index = match find_field_line_index(&self.current_chunk){
             Some(index) => index,
             None => {
                 return Err(ParseError::NotEnoughBytes);
-            }
+            },
         };
         let mut body_chunk_data_str = String::new();
-        let mut cursor = Cursor::new(&self.current_chunk[..next_body_data_size_index - 2]);
+        let mut cursor = Cursor::new(&self.current_chunk[..next_body_data_size_index-2]);
 
         cursor
             .read_to_string(&mut body_chunk_data_str)
             .map_err(|_| ParseError::OtherError)?;
-        println!("data received:{}", body_chunk_data_str);
-
+        
         self.data_content_part = false;
         self.chunked_body
-            .extend_from_slice(&self.current_chunk[..next_body_data_size_index - 2]);
+            .extend_from_slice(&self.current_chunk[..next_body_data_size_index-2]);
         self.body
             .extend_from_slice(&self.current_chunk[next_body_data_size_index..]);
         self.current_chunk.clear();
@@ -313,12 +305,6 @@ impl Request {
     }
     fn add_bytes_to_body(&mut self, buf: &[u8]) {
         self.body.append(&mut buf.to_vec())
-    }
-    pub fn get_request_method(&self)->&str{
-        &self.request_line.method
-    }
-    pub fn get_request_path(&self)->&str{
-        &self.request_line.request_target
     }
 }
 
@@ -347,35 +333,59 @@ fn parse_headers(header_field: &str) -> Result<(String, String), ParseError> {
     ))
 }
 
-#[derive(Debug, Default)]
-struct RequestLine {
-    http_version: String,
-    request_target: String,
-    method: String,
-}
-
-fn parse_request_line(request_line: &str) -> Result<RequestLine, ParseError> {
-    let http_verbs = ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"];
-    let broken_string = request_line.split(' ').collect::<Vec<&str>>();
+fn parse_response_line(response_line: &str) -> Result<ResponseLine, ParseError> {
+    let broken_string = response_line.split(' ').collect::<Vec<&str>>();
     if broken_string.len() < 3 {
-        return Err(ParseError::RequestLinePartsMissing);
+        return Err(ParseError::ResponseLinePartsMissing);
     }
-    let mut http_verb = String::new();
-    if http_verbs.contains(&broken_string[0]) {
-        http_verb.push_str(broken_string[0]);
-    } else {
-        return Err(ParseError::InvalidHttpMethod);
-    }
-    let http_version_parts: Vec<_> = broken_string[2].split('/').collect();
+    let mut http_status = String::new();
+    http_status.push_str(broken_string[2]);
+    let http_version_parts: Vec<_> = broken_string[0].split('/').collect();
     let http_version = match http_version_parts.get(1) {
         Some(version) => version,
         None => {
             return Err(ParseError::MissingHttpVersion);
         }
     };
-    Ok(RequestLine {
+    Ok(ResponseLine {
         http_version: http_version.to_string(),
-        method: http_verb,
-        request_target: broken_string[1].to_string(),
+        status_message: http_status,
+        status_code: broken_string[1].to_string(),
     })
+}
+
+pub fn is_valid_field_name(s: &str) -> bool {
+    s.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                '!' | '#'
+                    | '$'
+                    | '%'
+                    | '&'
+                    | '\''
+                    | '*'
+                    | '+'
+                    | '-'
+                    | '.'
+                    | '^'
+                    | '_'
+                    | '`'
+                    | '|'
+                    | '~'
+            )
+    })
+}
+
+pub fn find_payload_index(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(4)
+        .position(|w| matches!(w, b"\r\n\r\n"))
+        .map(|ix| ix + 4)
+}
+pub fn find_field_line_index(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(2)
+        .position(|w| matches!(w, b"\r\n"))
+        .map(|ix| ix+2)
 }
