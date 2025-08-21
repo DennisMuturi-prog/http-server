@@ -37,13 +37,13 @@ where
                 let response_writer = ResponseWriter::new(&mut bytes);
                 handler(response_writer, request);
                 connection.write_all(&bytes)?;
-                return Ok(());
+                Ok(())
             }
             Err(_) => {
                 write_status_line(&mut connection, StatusCode::BadRequest)?;
                 let headers = get_default_headers();
                 write_headers(&mut connection, headers)?;
-                return Ok(());
+                Ok(())
             }
         }
     }

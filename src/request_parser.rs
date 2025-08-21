@@ -1,4 +1,9 @@
-use std::{collections::HashMap, error::Error, io::{BufRead, Read}, net::TcpStream};
+use std::{
+    collections::HashMap,
+    error::Error,
+    io::{BufRead, Read},
+    net::TcpStream,
+};
 
 pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Error>> {
     let mut buf = [0; 1024];
@@ -57,13 +62,7 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                         let content_length = match request.headers.get("content-length") {
                             Some(content_len) => content_len,
                             None => {
-                                if request.request_line.method=="OPTIONS"{
-                                    return Ok(request);
-
-                                }else{
-                                    return Ok(request);
-
-                                }
+                                return Ok(request);
                             }
                         }
                         .parse::<usize>()?;
@@ -127,8 +126,8 @@ struct RequestLine {
     method: String,
 }
 impl Request {
-    fn parse(&mut self, request_line: &Vec<u8>) -> Result<usize, ParseError> {
-        if request_line.is_empty(){
+    fn parse(&mut self, request_line: &[u8]) -> Result<usize, ParseError> {
+        if request_line.is_empty() {
             println!("request line empty");
             return Err(ParseError::OtherError);
         }
@@ -160,7 +159,7 @@ impl Request {
         self.headers
             .entry(key)
             .and_modify(|existing| {
-                existing.push_str(","); // HTTP header values separated by comma-space
+                existing.push(','); // HTTP header values separated by comma-space
                 existing.push_str(&value);
             })
             .or_insert(value);
@@ -168,32 +167,30 @@ impl Request {
     fn add_bytes_to_body(&mut self, buf: &[u8]) {
         self.body.append(&mut buf.to_vec())
     }
-    pub fn get_request_path(&self)->&str{
+    pub fn get_request_path(&self) -> &str {
         &self.request_line.request_target
-
     }
-    pub fn get_request_method(&self)->&str{
+    pub fn get_request_method(&self) -> &str {
         &self.request_line.method
-
     }
 }
 
 fn parse_headers(header_field: &str) -> Result<(String, String), ParseError> {
     let broken_parts: Vec<_> = header_field.split(':').collect();
 
-    let key = broken_parts.get(0).ok_or(ParseError::InvalidHeader(
+    let key = broken_parts.first().ok_or(ParseError::InvalidHeader(
         "header could not be parsed".to_string(),
     ))?;
     if key.ends_with(' ') {
         return Err(ParseError::InvalidHeader(format!(
             "the key ``{}`` has a space between the field name and colon",
-            key.to_string()
+            key
         )));
     }
     if !is_valid_field_name(key) {
         return Err(ParseError::InvalidHeader(format!(
             "the key ``{}`` contains invalid characters",
-            key.to_string()
+            key
         )));
     }
     let value = broken_parts[1..].join(":");
@@ -211,7 +208,7 @@ fn parse_request_line(request_line: &str) -> Result<RequestLine, ParseError> {
     }
     let mut http_verb = String::new();
     if http_verbs.contains(&broken_string[0]) {
-        http_verb.push_str(&broken_string[0]);
+        http_verb.push_str(broken_string[0]);
     } else {
         return Err(ParseError::InvalidHttpMethod);
     }
