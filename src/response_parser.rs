@@ -1,0 +1,159 @@
+use std::{collections::HashMap, io::{Cursor, Read}, net::TcpStream};
+
+use crate::{chunked_parsing::find_field_line_index, http_message_parser::HttpMessage};
+#[derive(Debug)]
+pub enum FirstLineParseError {
+    ResponseLinePartsMissing,
+    OtherError,
+    MissingHttpVersion
+}
+#[derive(Debug, Default)]
+struct ResponseLine {
+    http_version: String,
+    status_code: String,
+    status_message: String,
+}
+
+#[derive(Debug)]
+pub struct ResponseParser<'a>{
+    response_line: ResponseLine,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+    data_content_part: bool,
+    bytes_to_retrieve: usize,
+    body_cursor:usize,
+    current_position:usize,
+    data:Vec<u8>,
+    http_stream:&'a mut TcpStream
+
+}
+impl<'a> ResponseParser<'a>{
+    pub fn new(http_stream: &'a mut TcpStream)->Self{
+        Self { response_line: ResponseLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024), http_stream }
+    }
+}
+
+impl<'a> HttpMessage for ResponseParser<'a>{
+    type FirstLineParseError = FirstLineParseError;
+    
+    fn parse_first_line(&mut self)->Result<usize,Self::FirstLineParseError> {
+        if self.data.is_empty() {
+            println!("response line empty");
+            return Err(FirstLineParseError::OtherError);
+        }
+        let current_part=&&self.data[self.current_position..];
+        let next_field_line_index = find_field_line_index(current_part).unwrap_or(0);
+        self.current_position+=next_field_line_index;
+        let mut cursor = Cursor::new(&current_part[..next_field_line_index-2]);
+        let mut response_line_str = String::new();
+        cursor
+            .read_to_string(&mut response_line_str)
+            .map_err(|_| FirstLineParseError::OtherError)?;
+        let parsed_line =
+            parse_response_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
+        self.response_line = parsed_line;
+        Ok(next_field_line_index)
+    }
+    
+    fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
+        self.bytes_to_retrieve=bytes_size;
+    }
+    
+    fn set_data_content_part(&mut self) {
+        self.data_content_part=!self.data_content_part;
+    }
+    
+    
+    fn get_data(&self) -> &[u8] {
+        &self.data
+    }
+    
+    fn get_current_part(&self) -> &[u8] {
+        &self.data[self.current_position..]
+    }
+    
+    fn get_current_position(&self) -> usize {
+        self.current_position
+    }
+    
+    fn set_current_position(&mut self, index: usize) {
+        self.current_position+=index;
+    }
+    
+    fn get_body_cursor(&self) -> usize {
+        self.body_cursor
+    }
+    
+    fn set_body_cursor(&mut self, index: usize) {
+        self.body_cursor+=index;
+    }
+    
+    // fn set_body_position(&mut self, index: usize) {
+    //     self.body_position+=index;
+    // }
+    
+    // fn get_body(&self)->&[u8] {
+    //     &self.body[self.body_position..]
+    // }
+    
+    fn set_headers(&mut self, key: String, value: String) {
+        self.headers
+            .entry(key)
+            .and_modify(|existing| {
+                existing.push(','); // HTTP header values separated by comma-space
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+        
+    }
+    
+    // fn add_to_body(&mut self,buf:&[u8]) {
+    //     self.body.extend_from_slice(buf);
+    // }
+    
+    fn add_to_data(&mut self,buf:&[u8]) {
+        self.data.extend_from_slice(buf);
+    }
+    // fn get_left_over_first_part(&self)->&[u8] {
+    //     &self.first_part[self.body_cursor..]
+    // }
+    
+    fn get_header(&self,key:&str)->Option<&String> {
+        self.headers.get(key)
+    }
+    
+    fn get_body_len(&self)->usize {
+        self.data.len()-self.body_cursor
+    }
+    
+    fn get_data_content_part_state(&self)->bool {
+        self.data_content_part
+    }
+    fn free_parsed_data(&mut self){
+        self.current_position=0;
+
+    }
+
+}
+
+
+fn parse_response_line(response_line: &str) -> Result<ResponseLine, FirstLineParseError> {
+    let broken_string = response_line.split(' ').collect::<Vec<&str>>();
+    if broken_string.len() < 3 {
+        return Err(FirstLineParseError::ResponseLinePartsMissing);
+    }
+    let mut http_status = String::new();
+    http_status.push_str(broken_string[2]);
+    let http_version_parts: Vec<_> = broken_string[0].split('/').collect();
+    let http_version = match http_version_parts.get(1) {
+        Some(version) => version,
+        None => {
+            return Err(FirstLineParseError::MissingHttpVersion);
+        }
+    };
+    Ok(ResponseLine {
+        http_version: http_version.to_string(),
+        status_message: http_status,
+        status_code: broken_string[1].to_string(),
+    })
+}
