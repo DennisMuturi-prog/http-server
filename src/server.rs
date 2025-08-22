@@ -5,8 +5,7 @@ use std::{
 };
 
 use crate::{
-    request_parser::{Request, request_from_reader},
-    response_writer::{Response, ResponseWriter},
+    http_message_parser::HttpMessage, request_parser::{Request, RequestParser}, response_writer::{Response, ResponseWriter}
 };
 
 pub struct Server<F> {
@@ -23,7 +22,8 @@ where
         Ok(Server { listener, handler })
     }
     fn handle(&self, mut connection: TcpStream) -> IoResult<()> {
-        match request_from_reader(&mut connection) {
+        let mut request_parser=RequestParser::new();
+        match request_parser.http_message_from_reader(&mut connection) {
             Ok(request) => {
                 if request.get_request_method() == "OPTIONS" {
                     write_status_line(&mut connection, StatusCode::Ok)?;

@@ -1,28 +1,30 @@
 use std::{error::Error, io::Read, net::TcpStream};
 
-use crate::{http_message_parser::{HeaderParseError, HttpMessage, ParseError}, response_parser::{FirstLineParseError, ResponseParser}};
+use crate::{
+    http_message_parser::{FirstLineParseError, HeaderParseError, HttpMessage, ParseError},
+    response_parser::ResponseParser,
+};
 
-pub fn response_from_reader_general(stream: &mut TcpStream) -> Result<ResponseParser, Box<dyn Error>> {
+pub fn response_from_reader_general(
+    stream: &mut TcpStream,
+) -> Result<ResponseParser, Box<dyn Error>> {
     let mut buf = [0; 1024];
-    let mut response = ResponseParser::new(stream);
+    let mut response = ResponseParser::new();
     let mut response_line_parsed = 0;
     let mut n = stream.read(&mut buf)?;
     response.add_to_data(&buf[..n]);
     loop {
-        if response_line_parsed==0{
+        if response_line_parsed == 0 {
             match response.parse_front() {
                 Ok(_) => {
                     response_line_parsed = 1;
                 }
-                Err(_) =>{
+                Err(_) => {
                     n = stream.read(&mut buf)?;
                     response.add_to_data(&buf[..n]);
-
                 }
             };
-
-        }
-        else if response_line_parsed == 1 {
+        } else if response_line_parsed == 1 {
             match response.parse_first_line() {
                 Ok(_) => {
                     response_line_parsed = 2;
@@ -31,21 +33,22 @@ pub fn response_from_reader_general(stream: &mut TcpStream) -> Result<ResponsePa
                     FirstLineParseError::OtherError => {
                         return Err("another error".into());
                     }
-                    
-                    FirstLineParseError::ResponseLinePartsMissing => {
+                    FirstLineParseError::FirstLinePartsMissing => {
                         return Err("parts of response line missing and could not be parsed".into());
                     }
                     FirstLineParseError::MissingHttpVersion => {
                         return Err("the version of http could not be parsed".into());
                     }
+                    FirstLineParseError::InvalidHttpMethod =>{
+                        return Err("the version of http could not be parsed".into());
+
+                    },
                 },
             };
         } else if response_line_parsed == 2 {
             match response.parse_headers() {
-                Ok(_) => {
-                }
+                Ok(_) => {}
                 Err(err) => match err {
-                    
                     HeaderParseError::HeadersDone => {
                         response_line_parsed = 3;
                         let content_length = match response.get_header("content-length") {
@@ -77,7 +80,6 @@ pub fn response_from_reader_general(stream: &mut TcpStream) -> Result<ResponsePa
                     HeaderParseError::InvalidHeader(cause) => {
                         return Err(cause.into());
                     }
-                    
                 },
             };
         } else if response_line_parsed == 3 {
@@ -90,7 +92,7 @@ pub fn response_from_reader_general(stream: &mut TcpStream) -> Result<ResponsePa
             if response.get_body_len() >= content_length {
                 return Ok(response);
             }
-        } else { 
+        } else {
             if response.get_data_content_part_state() {
                 match response.add_chunked_body_content() {
                     Ok(_) => {}

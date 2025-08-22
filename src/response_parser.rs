@@ -1,13 +1,7 @@
-use std::{collections::HashMap, io::{Cursor, Read}, net::TcpStream};
+use std::{collections::HashMap, io::{Cursor, Read}};
 
-use crate::{chunked_parsing::find_field_line_index, http_message_parser::HttpMessage};
-#[derive(Debug)]
-pub enum FirstLineParseError {
-    ResponseLinePartsMissing,
-    OtherError,
-    MissingHttpVersion
-}
-#[derive(Debug, Default)]
+use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage}};
+#[derive(Debug, Default,Clone)]
 struct ResponseLine {
     http_version: String,
     status_code: String,
@@ -15,7 +9,7 @@ struct ResponseLine {
 }
 
 #[derive(Debug)]
-pub struct ResponseParser<'a>{
+pub struct ResponseParser{
     response_line: ResponseLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
@@ -24,19 +18,25 @@ pub struct ResponseParser<'a>{
     body_cursor:usize,
     current_position:usize,
     data:Vec<u8>,
-    http_stream:&'a mut TcpStream
+    // http_stream:&'a mut TcpStream
 
 }
-impl<'a> ResponseParser<'a>{
-    pub fn new(http_stream: &'a mut TcpStream)->Self{
-        Self { response_line: ResponseLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024), http_stream }
+impl ResponseParser{
+    pub fn new()->Self{
+        Self { response_line: ResponseLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024)}
     }
 }
+#[derive(Debug)]
+pub struct Response{
+    response_line: ResponseLine,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
 
-impl<'a> HttpMessage for ResponseParser<'a>{
-    type FirstLineParseError = FirstLineParseError;
+impl HttpMessage for ResponseParser{
+    type HttpType = Response;
     
-    fn parse_first_line(&mut self)->Result<usize,Self::FirstLineParseError> {
+    fn parse_first_line(&mut self)->Result<usize,FirstLineParseError> {
         if self.data.is_empty() {
             println!("response line empty");
             return Err(FirstLineParseError::OtherError);
@@ -133,6 +133,14 @@ impl<'a> HttpMessage for ResponseParser<'a>{
         self.current_position=0;
 
     }
+    
+    fn create_parsed_http_payload(&self)->Self::HttpType {
+        Response{
+            response_line: self.response_line.clone(),
+            headers: self.headers.clone(),
+            body: self.body.clone(),
+        }
+    }
 
 }
 
@@ -140,7 +148,7 @@ impl<'a> HttpMessage for ResponseParser<'a>{
 fn parse_response_line(response_line: &str) -> Result<ResponseLine, FirstLineParseError> {
     let broken_string = response_line.split(' ').collect::<Vec<&str>>();
     if broken_string.len() < 3 {
-        return Err(FirstLineParseError::ResponseLinePartsMissing);
+        return Err(FirstLineParseError::FirstLinePartsMissing);
     }
     let mut http_status = String::new();
     http_status.push_str(broken_string[2]);

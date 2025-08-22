@@ -1,8 +1,9 @@
 pub mod mock_stream;
-pub mod request_parser;
+pub mod old_request_parser;
 pub mod server;
 pub mod response_writer;
 pub mod chunked_parsing;
 pub mod http_message_parser;
 pub mod response_parser;
 pub mod general_parser;
+pub mod request_parser;
