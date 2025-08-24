@@ -1,7 +1,5 @@
 use std::{
-    error::Error,
-    io::{Cursor, Read},
-    net::TcpStream,
+    collections::HashMap, io::{Cursor, Read}, net::TcpStream
 };
 
 pub enum ParseError {
@@ -37,10 +35,10 @@ pub trait HttpMessage {
     fn http_message_from_reader(
         &mut self,
         stream: &mut TcpStream,
-    ) -> Result<Self::HttpType, Box<dyn Error>> {
+    ) -> Result<Self::HttpType, String> {
         let mut buf = [0; 1024];
         let mut response_line_parsed = 0;
-        let mut n = stream.read(&mut buf)?;
+        let mut n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
         self.add_to_data(&buf[..n]);
         loop {
             if response_line_parsed == 0 {
@@ -49,7 +47,7 @@ pub trait HttpMessage {
                         response_line_parsed = 1;
                     }
                     Err(_) => {
-                        n = stream.read(&mut buf)?;
+                        n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
                         self.add_to_data(&buf[..n]);
                     }
                 };
@@ -82,6 +80,7 @@ pub trait HttpMessage {
                     Err(err) => match err {
                         HeaderParseError::HeadersDone => {
                             response_line_parsed = 3;
+                            println!("headers:{:?}",self.get_headers());
                             let content_length = match self.get_header("content-length") {
                                 Some(content_len) => content_len,
                                 None => {
@@ -100,8 +99,9 @@ pub trait HttpMessage {
                                     continue;
                                 }
                             }
-                            .parse::<usize>()?;
+                            .parse::<usize>().map_err(|_|"coluld not parse content length header".to_string())?;
                             if self.get_body_len() >= content_length {
+                                self.add_to_body();
                                 return Ok(self.create_parsed_http_payload());
                             }
                         }
@@ -114,13 +114,14 @@ pub trait HttpMessage {
                     },
                 };
             } else if response_line_parsed == 3 {
-                n = stream.read(&mut buf)?;
+                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
                 self.add_to_data(&buf[..n]);
                 let content_length = self
                     .get_header("content-length")
                     .ok_or("error occurred")?
-                    .parse::<usize>()?;
+                    .parse::<usize>().map_err(|_|"could not parse content length from header".to_string())?;
                 if self.get_body_len() >= content_length {
+                    self.add_to_body();
                     return Ok(self.create_parsed_http_payload());
                 }
             } else {
@@ -129,11 +130,11 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             ParseError::NotEnoughBytes => {
-                                n = stream.read(&mut buf)?;
+                                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
                                 self.add_to_data(&buf[..n]);
                             }
-                            ParseError::HeadersDone => {
-                                return Ok(self.create_parsed_http_payload());
+                            ParseError::OtherError=>{
+                                return Err("an error occurred transfer chunked encoding failed".to_string());
                             }
                             _ => return Ok(self.create_parsed_http_payload()),
                         },
@@ -143,7 +144,7 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             ParseError::NotEnoughBytes => {
-                                n = stream.read(&mut buf)?;
+                                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
                                 self.add_to_data(&buf[..n]);
                             }
                             ParseError::HeadersDone => {
@@ -194,7 +195,8 @@ pub trait HttpMessage {
         cursor
             .read_to_string(&mut body_chunk_size_str)
             .map_err(|_| ParseError::OtherError)?;
-        let bytes_to_be_retrieved = usize::from_str_radix(&body_chunk_size_str, 16).unwrap();
+        println!("body chunk size{}",body_chunk_size_str);
+        let bytes_to_be_retrieved = usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_|ParseError::OtherError)?;
         if bytes_to_be_retrieved == 0 {
             return Err(ParseError::HeadersDone);
         }
@@ -212,24 +214,21 @@ pub trait HttpMessage {
                 return Err(ParseError::NotEnoughBytes);
             }
         };
-        let mut body_chunk_data_str = String::new();
-        let mut cursor = Cursor::new(&body[..next_body_data_size_index - 2]);
-
-        cursor
-            .read_to_string(&mut body_chunk_data_str)
-            .map_err(|_| ParseError::OtherError)?;
-        println!("body chunk {}", body_chunk_data_str);
+        
+        self.add_chunk_to_body().map_err(|_|ParseError::OtherError)?;
         self.set_current_position(next_body_data_size_index);
         self.set_data_content_part();
         Ok(2)
     }
     fn parse_first_line(&mut self) -> Result<usize, FirstLineParseError>;
+    fn add_to_body(&mut self);
+    fn add_chunk_to_body(&mut self)->Result<(),&str>;
 
     fn create_parsed_http_payload(&self)->Self::HttpType;
+    fn get_headers(&self)->HashMap<String,String>;
 
     fn set_bytes_to_retrieve(&mut self, bytes_size: usize);
     fn set_data_content_part(&mut self);
-    // fn get_left_over_first_part(&self)->&[u8];
 
     fn get_data(&self) -> &[u8];
     fn free_parsed_data(&mut self);
@@ -238,10 +237,8 @@ pub trait HttpMessage {
     fn set_current_position(&mut self, index: usize);
     fn get_body_cursor(&self) -> usize;
     fn set_body_cursor(&mut self, index: usize);
-    // fn set_body_position(&mut self, index: usize);
-    // fn get_body(&self)->&[u8];
+    
     fn set_headers(&mut self, key: String, value: String);
-    // fn add_to_body(&mut self,buf:&[u8]);
     fn add_to_data(&mut self, buf: &[u8]);
     fn get_header(&self, key: &str) -> Option<&String>;
     fn get_body_len(&self) -> usize;

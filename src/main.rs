@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::{Result as IoResult, Write}, net::{ TcpStream, ToSocketAddrs}};
+use std::{collections::HashMap, fs::File, io::{Result as IoResult, Write}, net::{ TcpStream, ToSocketAddrs}};
 
 use single_threaded_server::{http_message_parser::HttpMessage, request_parser::Request, response_parser::ResponseParser, response_writer::{Response, ResponseWriter}, server::{Server, StatusCode}
 };
@@ -6,12 +6,22 @@ use single_threaded_server::{http_message_parser::HttpMessage, request_parser::R
 fn main() -> IoResult<()> {
     let server = Server::serve(8000, handler)?;
     server.listen();
-    connect_to_remote().unwrap();
+    // connect_to_remote().unwrap();
     Ok(())
 }
 
 fn handler(response_writer: ResponseWriter, request: Request) -> Response {
+    println!("request:{:?}",request.get_all_headers());
     let request_path = request.get_request_path();
+    let content_type_header=match request.get_header("content-type"){
+        Some(accept) => accept,
+        None => "",
+    };
+    if content_type_header=="image/jpeg"{
+        println!("hello");
+        let mut file=File::create("muturi.jpg").unwrap();
+        file.write_all(request.get_body()).unwrap();
+    }
     if request_path == "/yourproblem" {
         let response_message = "Your problem is not my problem\n";
         response_writer
@@ -42,9 +52,11 @@ fn connect_to_remote()->IoResult<()>{
     let host = "httpbin.org:80";
     let ip_lookup = host.to_socket_addrs()?.next().unwrap();
     let mut connection=TcpStream::connect(ip_lookup).unwrap();
-    connection.write_all(b"GET /stream/10 HTTP/1.1\r\nAccept: */*\r\nHost: httpbin.org\r\nContent-Length:0\r\n\r\n")?;
+    connection.write_all(b"GET /stream/100 HTTP/1.1\r\nAccept: */*\r\nHost: httpbin.org\r\nContent-Length:0\r\n\r\n")?;
     let mut response_parser=ResponseParser::new();
-    let response=response_parser.http_message_from_reader(&mut connection);
-    println!("response is {:?}",response);
+    let response=response_parser.http_message_from_reader(&mut connection).unwrap();
+    let parsed_body=String::from_utf8(response.get_body().to_vec()).unwrap();
+
+    println!("response is \n{}",parsed_body);
     Ok(())
 }

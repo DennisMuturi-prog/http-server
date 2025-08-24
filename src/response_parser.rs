@@ -32,6 +32,11 @@ pub struct Response{
     headers: HashMap<String, String>,
     body: Vec<u8>,
 }
+impl Response{
+    pub fn get_body(&self)->&[u8]{
+        &self.body
+    }
+}
 
 impl HttpMessage for ResponseParser{
     type HttpType = Response;
@@ -88,13 +93,7 @@ impl HttpMessage for ResponseParser{
         self.body_cursor+=index;
     }
     
-    // fn set_body_position(&mut self, index: usize) {
-    //     self.body_position+=index;
-    // }
     
-    // fn get_body(&self)->&[u8] {
-    //     &self.body[self.body_position..]
-    // }
     
     fn set_headers(&mut self, key: String, value: String) {
         self.headers
@@ -107,16 +106,12 @@ impl HttpMessage for ResponseParser{
         
     }
     
-    // fn add_to_body(&mut self,buf:&[u8]) {
-    //     self.body.extend_from_slice(buf);
-    // }
+    
     
     fn add_to_data(&mut self,buf:&[u8]) {
         self.data.extend_from_slice(buf);
     }
-    // fn get_left_over_first_part(&self)->&[u8] {
-    //     &self.first_part[self.body_cursor..]
-    // }
+    
     
     fn get_header(&self,key:&str)->Option<&String> {
         self.headers.get(key)
@@ -140,6 +135,22 @@ impl HttpMessage for ResponseParser{
             headers: self.headers.clone(),
             body: self.body.clone(),
         }
+    }
+    fn add_to_body(&mut self) {
+        self.body.extend_from_slice(&self.data[self.body_cursor..]);
+    }
+    fn add_chunk_to_body(&mut self)->Result<(),&str> {
+        let end_index=self.current_position+self.bytes_to_retrieve;
+        if end_index<=self.data.len(){
+            self.body.extend_from_slice(&self.data[self.current_position..self.current_position+self.bytes_to_retrieve]);
+            Ok(())
+        }else{
+            Err("wrong transfer chunk encoding")
+
+        }
+    }
+    fn get_headers(&self) ->HashMap<String, String>{
+        self.headers.clone()
     }
 
 }

@@ -5,7 +5,9 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::HttpMessage, request_parser::{Request, RequestParser}, response_writer::{Response, ResponseWriter}
+    http_message_parser::HttpMessage,
+    request_parser::{Request, RequestParser},
+    response_writer::{Response, ResponseWriter},
 };
 
 pub struct Server<F> {
@@ -22,7 +24,7 @@ where
         Ok(Server { listener, handler })
     }
     fn handle(&self, mut connection: TcpStream) -> IoResult<()> {
-        let mut request_parser=RequestParser::new();
+        let mut request_parser = RequestParser::new();
         match request_parser.http_message_from_reader(&mut connection) {
             Ok(request) => {
                 if request.get_request_method() == "OPTIONS" {
@@ -38,10 +40,15 @@ where
                 connection.write_all(&bytes)?;
                 Ok(())
             }
-            Err(_) => {
-                write_status_line(&mut connection, StatusCode::BadRequest)?;
-                let headers = get_default_headers();
-                write_headers(&mut connection, headers)?;
+            Err(err) => {
+                let mut bytes = Vec::new();
+                let response_writer = ResponseWriter::new(&mut bytes);
+                response_writer
+                    .write_status_line(StatusCode::BadRequest)
+                    .write_default_headers()
+                    .write_body_plain_text(&err);
+                connection.write_all(&bytes)?;
+                 
                 Ok(())
             }
         }
@@ -77,14 +84,6 @@ fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoR
     Ok(())
 }
 
-fn get_default_headers() -> HashMap<&'static str, &'static str> {
-    HashMap::from([
-        ("Content-Length", "0"),
-        ("Content-Type", "text/plain"),
-        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-        ("Connection", "close"),
-    ])
-}
 
 fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
     HashMap::from([
@@ -99,10 +98,7 @@ fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
 
 pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
     HashMap::from([
-        (
-            "Access-Control-Allow-Origin",
-            "https://hoppscotch.io",
-        ),
+        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
         ("Connection", "close"),
     ])
 }
