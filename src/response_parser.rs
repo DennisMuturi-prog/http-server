@@ -2,10 +2,16 @@ use std::{collections::HashMap, io::{Cursor, Read}};
 
 use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage}};
 #[derive(Debug, Default,Clone)]
-struct ResponseLine {
+pub struct ResponseLine {
     http_version: String,
     status_code: String,
     status_message: String,
+}
+impl ResponseLine {
+    pub fn new(http_version:String,status_code:String,status_message:String)->Self{
+        Self { http_version, status_code, status_message }
+    }
+    
 }
 
 #[derive(Debug)]
@@ -33,6 +39,10 @@ pub struct Response{
     body: Vec<u8>,
 }
 impl Response{
+    pub fn new(response_line:ResponseLine,headers:HashMap<String, String>,body:Vec<u8>)->Self{
+        Self { response_line, headers, body }
+
+    }
     pub fn get_body(&self)->&[u8]{
         &self.body
     }
@@ -129,7 +139,7 @@ impl HttpMessage for ResponseParser{
 
     }
     
-    fn create_parsed_http_payload(&self)->Self::HttpType {
+    fn create_parsed_http_payload(&mut self)->Self::HttpType {
         Response{
             response_line: self.response_line.clone(),
             headers: self.headers.clone(),

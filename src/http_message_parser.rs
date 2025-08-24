@@ -224,7 +224,7 @@ pub trait HttpMessage {
     fn add_to_body(&mut self);
     fn add_chunk_to_body(&mut self)->Result<(),&str>;
 
-    fn create_parsed_http_payload(&self)->Self::HttpType;
+    fn create_parsed_http_payload(&mut self)->Self::HttpType;
     fn get_headers(&self)->HashMap<String,String>;
 
     fn set_bytes_to_retrieve(&mut self, bytes_size: usize);

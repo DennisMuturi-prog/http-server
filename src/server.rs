@@ -1,13 +1,11 @@
 use std::{
     collections::HashMap,
     io::{Result as IoResult, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
 };
 
 use crate::{
-    http_message_parser::HttpMessage,
-    request_parser::{Request, RequestParser},
-    response_writer::{Response, ResponseWriter},
+    http_message_parser::HttpMessage, proxy_response_parser::ProxyResponseParser, request_parser::{Request, RequestParser}, response_writer::{Response, ResponseWriter}
 };
 
 pub struct Server<F> {
@@ -17,7 +15,7 @@ pub struct Server<F> {
 
 impl<F> Server<F>
 where
-    F: Fn(ResponseWriter, Request) -> Response,
+    F: Fn(ResponseWriter, Request) -> IoResult<Response>,
 {
     pub fn serve(port: u16, handler: F) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
@@ -33,22 +31,21 @@ where
                     write_headers(&mut connection, headers)?;
                     return Ok(());
                 }
-                let mut bytes = Vec::new();
+                if request.get_request_path()=="/proxy"{
+                    connect_to_remote(&mut connection)?;
+                    return Ok(());
+                }
                 let handler = &self.handler;
-                let response_writer = ResponseWriter::new(&mut bytes);
-                handler(response_writer, request);
-                connection.write_all(&bytes)?;
+                let response_writer = ResponseWriter::new(&mut connection);
+                handler(response_writer, request)?;
                 Ok(())
             }
             Err(err) => {
-                let mut bytes = Vec::new();
-                let response_writer = ResponseWriter::new(&mut bytes);
+                let response_writer = ResponseWriter::new(&mut connection);
                 response_writer
-                    .write_status_line(StatusCode::BadRequest)
-                    .write_default_headers()
-                    .write_body_plain_text(&err);
-                connection.write_all(&bytes)?;
-                 
+                    .write_status_line(StatusCode::BadRequest)?
+                    .write_default_headers()?
+                    .write_body_plain_text(&err)?;                 
                 Ok(())
             }
         }
@@ -73,7 +70,7 @@ pub enum StatusCode {
     InternalServerError,
 }
 
-fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoResult<()> {
+pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoResult<()> {
     let mut status = match status {
         StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
         StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
@@ -103,7 +100,7 @@ pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
     ])
 }
 
-fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &str>) -> IoResult<()> {
+pub fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &str>) -> IoResult<()> {
     let mut headers_response = String::new();
     for (key, value) in headers {
         headers_response.push_str(key);
@@ -113,5 +110,19 @@ fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &str>) 
     }
     headers_response.push_str("\r\n");
     stream_writer.write_all(headers_response.as_bytes())?;
+    Ok(())
+}
+
+
+fn connect_to_remote(client_stream:&mut TcpStream)->IoResult<()>{
+    let host = "httpbin.org:80";
+    let ip_lookup = host.to_socket_addrs()?.next().unwrap();
+    let mut connection=TcpStream::connect(ip_lookup).unwrap();
+    connection.write_all(b"GET /stream/100 HTTP/1.1\r\nAccept: */*\r\nHost: httpbin.org\r\nContent-Length:0\r\n\r\n")?;
+    let mut response_parser=ProxyResponseParser::new(client_stream);
+    let response=response_parser.http_message_from_reader(&mut connection).unwrap();
+    let parsed_body=String::from_utf8(response.get_body().to_vec()).unwrap();
+
+    println!("response is \n{}",parsed_body);
     Ok(())
 }

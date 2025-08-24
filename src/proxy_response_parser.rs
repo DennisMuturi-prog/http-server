@@ -1,16 +1,11 @@
-use std::{collections::HashMap, io::{Cursor, Read}};
+use std::{collections::HashMap, io::{Cursor, Read, Write}, net::TcpStream};
 
-use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage}};
-#[derive(Debug, Default,Clone)]
-struct RequestLine {
-    http_version: String,
-    request_target: String,
-    method: String,
-}
+use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage}, response_parser::{Response, ResponseLine}, response_writer::{Body, ResponseWriter}, server::{write_headers, write_status_line, StatusCode}};
 
-#[derive(Debug)]
-pub struct RequestParser{
-    request_line: RequestLine,
+
+
+pub struct ProxyResponseParser<'a>{
+    response_line: ResponseLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
     data_content_part: bool,
@@ -18,43 +13,19 @@ pub struct RequestParser{
     body_cursor:usize,
     current_position:usize,
     data:Vec<u8>,
-    // http_stream:&'a mut TcpStream
+    client_stream:&'a mut TcpStream
+    
 
 }
-impl RequestParser{
-    pub fn new()->Self{
-        Self { request_line: RequestLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024)}
-    }
-}
-
-#[derive(Debug)]
-
-pub struct Request{
-    request_line: RequestLine,
-    headers: HashMap<String, String>,
-    body: Vec<u8>,
-}
-
-impl Request{
-    pub fn get_request_method(&self)->&str{
-        &self.request_line.method
-    }
-    pub fn get_request_path(&self)->&str{
-        &self.request_line.request_target
-    }
-    pub fn get_body(&self)->&[u8]{
-        &self.body
-    }
-    pub fn get_header(&self,header:&str)->Option<&String>{
-        self.headers.get(header)
-    }
-    pub fn get_all_headers(&self)->HashMap<String,String>{
-        self.headers.clone()
+impl<'a> ProxyResponseParser<'a>{
+    pub fn new(client_stream:&'a mut TcpStream)->ProxyResponseParser<'a>{
+        ProxyResponseParser { response_line: ResponseLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),client_stream}
     }
 }
 
-impl HttpMessage for RequestParser{
-    type HttpType = Request;
+
+impl<'a> HttpMessage for ProxyResponseParser<'a>{
+    type HttpType = Response;
     
     fn parse_first_line(&mut self)->Result<usize,FirstLineParseError> {
         if self.data.is_empty() {
@@ -70,11 +41,10 @@ impl HttpMessage for RequestParser{
             .read_to_string(&mut response_line_str)
             .map_err(|_| FirstLineParseError::OtherError)?;
         let parsed_line =
-            parse_request_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
-        self.request_line = parsed_line;
+            parse_response_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
+        self.response_line = parsed_line;
         Ok(next_field_line_index)
     }
-    
     
     fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
         self.bytes_to_retrieve=bytes_size;
@@ -106,6 +76,8 @@ impl HttpMessage for RequestParser{
     }
     
     fn set_body_cursor(&mut self, index: usize) {
+        write_status_line(self.client_stream, StatusCode::Ok).unwrap();
+        write_headers(self.client_stream, HashMap::from([("Transfer-encoding","chunked"),("Content-type","application/json")])).unwrap();
         self.body_cursor+=index;
     }
     
@@ -146,28 +118,30 @@ impl HttpMessage for RequestParser{
     }
     
     fn create_parsed_http_payload(&mut self)->Self::HttpType {
-        Request{
-            request_line: self.request_line.clone(),
-            headers: self.headers.clone(),
-            body: self.body.clone(),
-        }
+        self.client_stream.write_all(b"0\r\n\r\n").unwrap();
+        Response::new(self.response_line.clone(),
+            self.headers.clone(),
+            self.body.clone())
+            
     }
-    
     fn add_to_body(&mut self) {
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
     }
-    
     fn add_chunk_to_body(&mut self)->Result<(),&str> {
         let end_index=self.current_position+self.bytes_to_retrieve;
         if end_index<=self.data.len(){
             self.body.extend_from_slice(&self.data[self.current_position..self.current_position+self.bytes_to_retrieve]);
+            let mut hex_string_upper = format!("{:X}", self.bytes_to_retrieve);
+            hex_string_upper.push_str("\r\n");
+            self.client_stream.write_all(hex_string_upper.as_bytes()).unwrap();
+            self.client_stream.write_all(&self.data[self.current_position..self.current_position+self.bytes_to_retrieve+2]).unwrap();
+
             Ok(())
         }else{
             Err("wrong transfer chunk encoding")
 
         }
     }
-    
     fn get_headers(&self) ->HashMap<String, String>{
         self.headers.clone()
     }
@@ -175,28 +149,20 @@ impl HttpMessage for RequestParser{
 }
 
 
-fn parse_request_line(request_line: &str) -> Result<RequestLine, FirstLineParseError> {
-    let http_verbs = ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"];
-    let broken_string = request_line.split(' ').collect::<Vec<&str>>();
+fn parse_response_line(response_line: &str) -> Result<ResponseLine, FirstLineParseError> {
+    let broken_string = response_line.split(' ').collect::<Vec<&str>>();
     if broken_string.len() < 3 {
         return Err(FirstLineParseError::FirstLinePartsMissing);
     }
-    let mut http_verb = String::new();
-    if http_verbs.contains(&broken_string[0]) {
-        http_verb.push_str(broken_string[0]);
-    } else {
-        return Err(FirstLineParseError::InvalidHttpMethod);
-    }
-    let http_version_parts: Vec<_> = broken_string[2].split('/').collect();
+    let mut http_status_message = String::new();
+    http_status_message.push_str(broken_string[2]);
+    let http_version_parts: Vec<_> = broken_string[0].split('/').collect();
     let http_version = match http_version_parts.get(1) {
         Some(version) => version,
         None => {
             return Err(FirstLineParseError::MissingHttpVersion);
         }
     };
-    Ok(RequestLine {
-        http_version: http_version.to_string(),
-        method: http_verb,
-        request_target: broken_string[1].to_string(),
-    })
+    Ok(ResponseLine::new(http_version.to_string(),broken_string[1].to_string(), http_status_message  )
+    )
 }
