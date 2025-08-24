@@ -112,7 +112,18 @@ pub fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &st
     stream_writer.write_all(headers_response.as_bytes())?;
     Ok(())
 }
-
+pub fn write_proxied_headers<T: Write>(stream_writer: &mut T, headers: HashMap<String,String>) -> IoResult<()> {
+    let mut headers_response = String::new();
+    for (key, value) in headers {
+        headers_response.push_str(key.as_str());
+        headers_response.push_str(": ");
+        headers_response.push_str(value.as_str());
+        headers_response.push_str("\r\n");
+    }
+    headers_response.push_str("\r\n");
+    stream_writer.write_all(headers_response.as_bytes())?;
+    Ok(())
+}
 
 fn connect_to_remote(client_stream:&mut TcpStream)->IoResult<()>{
     let host = "httpbin.org:80";

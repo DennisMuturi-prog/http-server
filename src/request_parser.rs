@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::{Cursor, Read}};
 
-use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage}};
+use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}};
 #[derive(Debug, Default,Clone)]
 struct RequestLine {
     http_version: String,
@@ -8,7 +8,7 @@ struct RequestLine {
     method: String,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct RequestParser{
     request_line: RequestLine,
     headers: HashMap<String, String>,
@@ -18,12 +18,12 @@ pub struct RequestParser{
     body_cursor:usize,
     current_position:usize,
     data:Vec<u8>,
-    // http_stream:&'a mut TcpStream
+    parsing_state:ParsingState
 
 }
 impl RequestParser{
     pub fn new()->Self{
-        Self { request_line: RequestLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024)}
+        Self { request_line: RequestLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),parsing_state:ParsingState::FrontSeparateBody}
     }
 }
 
@@ -145,7 +145,7 @@ impl HttpMessage for RequestParser{
 
     }
     
-    fn create_parsed_http_payload(&mut self)->Self::HttpType {
+    fn create_parsed_http_payload(&self)->Self::HttpType {
         Request{
             request_line: self.request_line.clone(),
             headers: self.headers.clone(),
@@ -170,6 +170,14 @@ impl HttpMessage for RequestParser{
     
     fn get_headers(&self) ->HashMap<String, String>{
         self.headers.clone()
+    }
+    
+    fn set_parsing_state(&mut self,parsing_state:ParsingState) {
+        self.parsing_state=parsing_state
+    }
+    
+    fn get_parsing_state(&self)->&ParsingState {
+        &self.parsing_state
     }
 
 }

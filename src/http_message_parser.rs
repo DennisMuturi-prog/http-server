@@ -1,5 +1,7 @@
 use std::{
-    collections::HashMap, io::{Cursor, Read}, net::TcpStream
+    collections::HashMap,
+    io::{Cursor, Read},
+    net::TcpStream,
 };
 
 pub enum ParseError {
@@ -9,6 +11,15 @@ pub enum ParseError {
     MissingHttpVersion,
     InvalidHeader(String),
     HeadersDone,
+}
+
+pub enum ParsingState {
+    FrontSeparateBody,
+    FirstLine,
+    Headers,
+    BodyContentLength,
+    BodyChunked,
+    Done,
 }
 
 pub struct NotEnoughBytes;
@@ -37,122 +48,148 @@ pub trait HttpMessage {
         stream: &mut TcpStream,
     ) -> Result<Self::HttpType, String> {
         let mut buf = [0; 1024];
-        let mut response_line_parsed = 0;
-        let mut n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
+        let mut n = stream
+            .read(&mut buf)
+            .map_err(|_| "error reading stream".to_string())?;
         self.add_to_data(&buf[..n]);
         loop {
-            if response_line_parsed == 0 {
-                match self.parse_front() {
-                    Ok(_) => {
-                        response_line_parsed = 1;
-                    }
-                    Err(_) => {
-                        n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
-                        self.add_to_data(&buf[..n]);
-                    }
-                };
-            } else if response_line_parsed == 1 {
-                match self.parse_first_line() {
-                    Ok(_) => {
-                        response_line_parsed = 2;
-                    }
-                    Err(err) => match err {
-                        FirstLineParseError::OtherError => {
-                            return Err("another error".into());
+            match self.get_parsing_state() {
+                ParsingState::FrontSeparateBody => {
+                    match self.parse_front() {
+                        Ok(_) => {
+                            self.set_parsing_state(ParsingState::FirstLine);
                         }
-                        FirstLineParseError::FirstLinePartsMissing => {
-                            return Err(
-                                "parts of response line missing and could not be parsed".into()
-                            );
+                        Err(_) => {
+                            n = stream
+                                .read(&mut buf)
+                                .map_err(|_| "error reading stream".to_string())?;
+                            self.add_to_data(&buf[..n]);
                         }
-                        FirstLineParseError::MissingHttpVersion => {
-                            return Err("the version of http could not be parsed".into());
+                    };
+                }
+                ParsingState::FirstLine => {
+                    match self.parse_first_line() {
+                        Ok(_) => {
+                            self.set_parsing_state(ParsingState::Headers);
                         }
-                        FirstLineParseError::InvalidHttpMethod =>{
-                            return Err("invalid http method".into());
-
+                        Err(err) => match err {
+                            FirstLineParseError::OtherError => {
+                                return Err("another error".into());
+                            }
+                            FirstLineParseError::FirstLinePartsMissing => {
+                                return Err(
+                                    "parts of response line missing and could not be parsed".into(),
+                                );
+                            }
+                            FirstLineParseError::MissingHttpVersion => {
+                                return Err("the version of http could not be parsed".into());
+                            }
+                            FirstLineParseError::InvalidHttpMethod => {
+                                return Err("invalid http method".into());
+                            }
                         },
-                    },
-                };
-            } else if response_line_parsed == 2 {
-                match self.parse_headers() {
-                    Ok(_) => {}
-                    Err(err) => match err {
-                        HeaderParseError::HeadersDone => {
-                            response_line_parsed = 3;
-                            println!("headers:{:?}",self.get_headers());
-                            let content_length = match self.get_header("content-length") {
-                                Some(content_len) => content_len,
-                                None => {
-                                    let transfer_encoding_chunked =
-                                        match self.get_header("transfer-encoding") {
-                                            Some(chunking) => chunking,
-                                            None => {
-                                                return Ok(self.create_parsed_http_payload());
-                                            }
-                                        };
-                                    if transfer_encoding_chunked == "chunked" {
-                                        response_line_parsed = 4;
-                                    } else {
-                                        return Ok(self.create_parsed_http_payload());
+                    };
+                }
+                ParsingState::Headers => {
+                    match self.parse_headers() {
+                        Ok(_) => {}
+                        Err(err) => match err {
+                            HeaderParseError::HeadersDone => {
+                                let content_length = match self.get_header("content-length") {
+                                    Some(content_len) => {
+                                        content_len
                                     }
-                                    continue;
+                                    None => {
+                                        let transfer_encoding_chunked =
+                                            match self.get_header("transfer-encoding") {
+                                                Some(chunking) => chunking,
+                                                None => {
+                                                    return Ok(self.create_parsed_http_payload());
+                                                }
+                                            };
+                                        if transfer_encoding_chunked == "chunked" {
+                                            self.set_parsing_state(ParsingState::BodyChunked);
+                                        } else {
+                                            return Ok(self.create_parsed_http_payload());
+                                        }
+                                        continue;
+                                    }
+                                }
+                                .parse::<usize>()
+                                .map_err(|_| {
+                                    "coluld not parse content length header".to_string()
+                                })?;
+                                self.set_parsing_state(ParsingState::BodyContentLength);
+                                if self.get_body_len() >= content_length {
+                                    self.add_to_body();
+                                    return Ok(self.create_parsed_http_payload());
                                 }
                             }
-                            .parse::<usize>().map_err(|_|"coluld not parse content length header".to_string())?;
-                            if self.get_body_len() >= content_length {
-                                self.add_to_body();
-                                return Ok(self.create_parsed_http_payload());
+                            HeaderParseError::OtherError => {
+                                return Err("another error".into());
                             }
-                        }
-                        HeaderParseError::OtherError => {
-                            return Err("another error".into());
-                        }
-                        HeaderParseError::InvalidHeader(cause) => {
-                            return Err(cause.into());
-                        }
-                    },
-                };
-            } else if response_line_parsed == 3 {
-                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
-                self.add_to_data(&buf[..n]);
-                let content_length = self
-                    .get_header("content-length")
-                    .ok_or("error occurred")?
-                    .parse::<usize>().map_err(|_|"could not parse content length from header".to_string())?;
-                if self.get_body_len() >= content_length {
-                    self.add_to_body();
-                    return Ok(self.create_parsed_http_payload());
+                            HeaderParseError::InvalidHeader(cause) => {
+                                return Err(cause.into());
+                            }
+                        },
+                    };
                 }
-            } else {
-                if self.get_data_content_part_state() {
-                    match self.add_chunked_body_content() {
-                        Ok(_) => {}
-                        Err(err) => match err {
-                            ParseError::NotEnoughBytes => {
-                                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
-                                self.add_to_data(&buf[..n]);
-                            }
-                            ParseError::OtherError=>{
-                                return Err("an error occurred transfer chunked encoding failed".to_string());
-                            }
-                            _ => return Ok(self.create_parsed_http_payload()),
-                        },
+                ParsingState::BodyContentLength => {
+                    n = stream
+                        .read(&mut buf)
+                        .map_err(|_| "error reading stream".to_string())?;
+                    self.add_to_data(&buf[..n]);
+                    let content_length = self
+                        .get_header("content-length")
+                        .ok_or("error occurred")?
+                        .parse::<usize>()
+                        .map_err(|_| "could not parse content length from header".to_string())?;
+                    if self.get_body_len() >= content_length {
+                        self.add_to_body();
+                        return Ok(self.create_parsed_http_payload());
                     }
-                } else {
-                    match self.parse_chunked_body() {
-                        Ok(_) => {}
-                        Err(err) => match err {
-                            ParseError::NotEnoughBytes => {
-                                n = stream.read(&mut buf).map_err(|_|"error reading stream".to_string())?;
-                                self.add_to_data(&buf[..n]);
-                            }
-                            ParseError::HeadersDone => {
-                                return Ok(self.create_parsed_http_payload());
-                            }
-                            _ => return Ok(self.create_parsed_http_payload()),
-                        },
+                }
+                ParsingState::BodyChunked => {
+                    if self.get_data_content_part_state() {
+                        match self.add_chunked_body_content() {
+                            Ok(_) => {}
+                            Err(err) => match err {
+                                ParseError::NotEnoughBytes => {
+                                    n = stream
+                                        .read(&mut buf)
+                                        .map_err(|_| "error reading stream".to_string())?;
+                                    self.add_to_data(&buf[..n]);
+                                }
+                                ParseError::OtherError => {
+                                    return Err(
+                                        "an error occurred transfer chunked encoding failed"
+                                            .to_string(),
+                                    );
+                                }
+                                _ => return Ok(self.create_parsed_http_payload()),
+                            },
+                        }
+                    } else {
+                        match self.parse_chunked_body() {
+                            Ok(_) => {}
+                            Err(err) => match err {
+                                ParseError::NotEnoughBytes => {
+                                    n = stream
+                                        .read(&mut buf)
+                                        .map_err(|_| "error reading stream".to_string())?;
+                                    self.add_to_data(&buf[..n]);
+                                }
+                                ParseError::HeadersDone => {
+                                    self.set_parsing_state(ParsingState::Done);
+                                    return Ok(self.create_parsed_http_payload());
+                                }
+                                _ => return Ok(self.create_parsed_http_payload()),
+                            },
+                        }
                     }
+                }
+                ParsingState::Done => {
+                    return Ok(self.create_parsed_http_payload());
                 }
             }
         }
@@ -195,8 +232,8 @@ pub trait HttpMessage {
         cursor
             .read_to_string(&mut body_chunk_size_str)
             .map_err(|_| ParseError::OtherError)?;
-        println!("body chunk size{}",body_chunk_size_str);
-        let bytes_to_be_retrieved = usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_|ParseError::OtherError)?;
+        let bytes_to_be_retrieved =
+            usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_| ParseError::OtherError)?;
         if bytes_to_be_retrieved == 0 {
             return Err(ParseError::HeadersDone);
         }
@@ -214,18 +251,21 @@ pub trait HttpMessage {
                 return Err(ParseError::NotEnoughBytes);
             }
         };
-        
-        self.add_chunk_to_body().map_err(|_|ParseError::OtherError)?;
+
+        self.add_chunk_to_body()
+            .map_err(|_| ParseError::OtherError)?;
         self.set_current_position(next_body_data_size_index);
         self.set_data_content_part();
         Ok(2)
     }
     fn parse_first_line(&mut self) -> Result<usize, FirstLineParseError>;
     fn add_to_body(&mut self);
-    fn add_chunk_to_body(&mut self)->Result<(),&str>;
+    fn add_chunk_to_body(&mut self) -> Result<(), &str>;
+    fn set_parsing_state(&mut self, parsing_state: ParsingState);
+    fn get_parsing_state(&self) -> &ParsingState;
 
-    fn create_parsed_http_payload(&mut self)->Self::HttpType;
-    fn get_headers(&self)->HashMap<String,String>;
+    fn create_parsed_http_payload(&self) -> Self::HttpType;
+    fn get_headers(&self) -> HashMap<String, String>;
 
     fn set_bytes_to_retrieve(&mut self, bytes_size: usize);
     fn set_data_content_part(&mut self);
@@ -237,7 +277,7 @@ pub trait HttpMessage {
     fn set_current_position(&mut self, index: usize);
     fn get_body_cursor(&self) -> usize;
     fn set_body_cursor(&mut self, index: usize);
-    
+
     fn set_headers(&mut self, key: String, value: String);
     fn add_to_data(&mut self, buf: &[u8]);
     fn get_header(&self, key: &str) -> Option<&String>;
