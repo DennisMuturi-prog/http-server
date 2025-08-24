@@ -112,7 +112,7 @@ pub fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &st
     stream_writer.write_all(headers_response.as_bytes())?;
     Ok(())
 }
-pub fn write_proxied_headers<T: Write>(stream_writer: &mut T, headers: HashMap<String,String>) -> IoResult<()> {
+pub fn write_proxied_headers<T: Write>(stream_writer: &mut T, headers: &HashMap<String,String>) -> IoResult<()> {
     let mut headers_response = String::new();
     for (key, value) in headers {
         headers_response.push_str(key.as_str());

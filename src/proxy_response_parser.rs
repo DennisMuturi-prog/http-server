@@ -169,7 +169,7 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
                 write_status_line(self.client_stream, StatusCode::Ok).unwrap();
                 write_proxied_headers(
                     self.client_stream,
-                    self.headers.clone()
+                    &self.headers.clone()
                 )
                 .unwrap();
 
@@ -178,7 +178,7 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
                 write_status_line(self.client_stream, StatusCode::Ok).unwrap();
                 write_proxied_headers(
                     self.client_stream,
-                    self.headers.clone()
+                    &self.headers
                 )
                 .unwrap();
             }
