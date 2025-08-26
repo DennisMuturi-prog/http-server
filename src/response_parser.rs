@@ -11,11 +11,15 @@ impl ResponseLine {
     pub fn new(http_version:String,status_code:String,status_message:String)->Self{
         Self { http_version, status_code, status_message }
     }
-    pub fn get_status_code(&self)->&str{
+    pub fn status_code(&self)->&str{
         &self.status_code
     }
-    pub fn get_status_message(&self)->&str{
+    pub fn status_message(&self)->&str{
         &self.status_message
+    }
+    
+    pub fn http_version(&self) -> &str {
+        &self.http_version
     }
     
 }
@@ -48,8 +52,16 @@ impl Response{
         Self { response_line, headers, body }
 
     }
-    pub fn get_body(&self)->&[u8]{
+    pub fn body(&self)->&[u8]{
         &self.body
+    }
+    
+    pub fn response_line(&self) -> &ResponseLine {
+        &self.response_line
+    }
+    
+    pub fn headers(&self) -> &HashMap<String, String> {
+        &self.headers
     }
 }
 

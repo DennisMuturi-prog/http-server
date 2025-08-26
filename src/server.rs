@@ -96,7 +96,7 @@ pub fn write_proxied_request_status_line<T: Write>(stream_writer: &mut T,request
 }
 
 pub fn write_proxied_response_status_line<T: Write>(stream_writer: &mut T,response:&ResponseLine) -> IoResult<()> {
-    let status_line=format!("HTTP/1.1 {} {}\r\n",response.get_status_code(),response.get_status_message());
+    let status_line=format!("HTTP/1.1 {} {}\r\n",response.status_code(),response.status_message());
     stream_writer.write_all(status_line.as_bytes())?;
     Ok(())
 }
@@ -156,7 +156,7 @@ fn proxy_to_remote(mut client_stream:TcpStream)->IoResult<()>{
     request_parser.http_message_from_reader(&mut client_stream).unwrap();
     let mut response_parser=ProxyResponseParser::new(&mut client_stream);
     let response=response_parser.http_message_from_reader(&mut connection).unwrap();
-    let parsed_body=String::from_utf8(response.get_body().to_vec()).unwrap();
+    let parsed_body=String::from_utf8(response.body().to_vec()).unwrap();
     println!("response is \n{}",parsed_body);
     Ok(())
 }
