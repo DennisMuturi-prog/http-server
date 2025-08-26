@@ -8,3 +8,4 @@ pub mod response_parser;
 pub mod general_parser;
 pub mod request_parser;
 pub mod proxy_response_parser;
+pub mod proxy_request_parser;

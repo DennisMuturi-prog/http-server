@@ -2,10 +2,18 @@ use std::{collections::HashMap, io::{Cursor, Read}};
 
 use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}};
 #[derive(Debug, Default,Clone)]
-struct RequestLine {
+pub struct RequestLine {
     http_version: String,
     request_target: String,
     method: String,
+}
+impl RequestLine{
+    pub fn get_request_method(&self)->&str{
+        &self.method
+    }
+    pub fn get_request_path(&self)->&str{
+        &self.request_target
+    }
 }
 
 // #[derive(Debug)]
@@ -36,6 +44,10 @@ pub struct Request{
 }
 
 impl Request{
+    pub fn new(request_line:RequestLine,headers:HashMap<String, String>,body:Vec<u8>)->Self{
+        Self { request_line, headers, body }
+
+    }
     pub fn get_request_method(&self)->&str{
         &self.request_line.method
     }
@@ -183,7 +195,7 @@ impl HttpMessage for RequestParser{
 }
 
 
-fn parse_request_line(request_line: &str) -> Result<RequestLine, FirstLineParseError> {
+pub fn parse_request_line(request_line: &str) -> Result<RequestLine, FirstLineParseError> {
     let http_verbs = ["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"];
     let broken_string = request_line.split(' ').collect::<Vec<&str>>();
     if broken_string.len() < 3 {

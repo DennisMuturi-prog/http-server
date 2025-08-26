@@ -95,6 +95,7 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             HeaderParseError::HeadersDone => {
+                                println!("headers:{:?}",self.get_headers());
                                 let content_length = match self.get_header("content-length") {
                                     Some(content_len) => {
                                         content_len
@@ -104,12 +105,15 @@ pub trait HttpMessage {
                                             match self.get_header("transfer-encoding") {
                                                 Some(chunking) => chunking,
                                                 None => {
+                                                    self.set_parsing_state(ParsingState::BodyContentLength);
+                                                    
                                                     return Ok(self.create_parsed_http_payload());
                                                 }
                                             };
                                         if transfer_encoding_chunked == "chunked" {
                                             self.set_parsing_state(ParsingState::BodyChunked);
                                         } else {
+                                            self.set_parsing_state(ParsingState::BodyContentLength);
                                             return Ok(self.create_parsed_http_payload());
                                         }
                                         continue;

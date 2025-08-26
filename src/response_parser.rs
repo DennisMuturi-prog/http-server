@@ -11,6 +11,12 @@ impl ResponseLine {
     pub fn new(http_version:String,status_code:String,status_message:String)->Self{
         Self { http_version, status_code, status_message }
     }
+    pub fn get_status_code(&self)->&str{
+        &self.status_code
+    }
+    pub fn get_status_message(&self)->&str{
+        &self.status_message
+    }
     
 }
 
@@ -172,7 +178,7 @@ impl HttpMessage for ResponseParser{
 }
 
 
-fn parse_response_line(response_line: &str) -> Result<ResponseLine, FirstLineParseError> {
+pub fn parse_response_line(response_line: &str) -> Result<ResponseLine, FirstLineParseError> {
     let broken_string = response_line.split(' ').collect::<Vec<&str>>();
     if broken_string.len() < 3 {
         return Err(FirstLineParseError::FirstLinePartsMissing);

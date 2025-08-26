@@ -5,10 +5,7 @@ use std::{
 };
 
 use crate::{
-    chunked_parsing::find_field_line_index,
-    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
-    response_parser::{parse_response_line, Response, ResponseLine},
-    server::{ write_proxied_headers, write_status_line, StatusCode},
+    chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}, request_parser::{parse_request_line, Request, RequestLine}, response_parser::{parse_response_line, Response, ResponseLine}, server::{ write_proxied_headers, write_proxied_request_status_line, write_status_line, StatusCode}
 };
 
 enum HttpCycle{
@@ -16,8 +13,8 @@ enum HttpCycle{
     RequestCycle
 }
 
-pub struct ProxyResponseParser<'a> {
-    response_line: ResponseLine,
+pub struct ProxyRequestParser<'a> {
+    request_line: RequestLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
     data_content_part: bool,
@@ -26,12 +23,13 @@ pub struct ProxyResponseParser<'a> {
     current_position: usize,
     data: Vec<u8>,
     parsing_state: ParsingState,
-    client_stream: &'a mut TcpStream
+    remote_host_name:&'static str,
+    remote_host_stream: &'a mut TcpStream
 }
-impl<'a> ProxyResponseParser<'a> {
-    pub fn new(client_stream: &'a mut TcpStream) -> ProxyResponseParser<'a> {
-        ProxyResponseParser {
-            response_line: ResponseLine::default(),
+impl<'a> ProxyRequestParser<'a> {
+    pub fn new(remote_host_stream: &'a mut TcpStream,remote_host_name:&'static str ) -> ProxyRequestParser<'a> {
+        ProxyRequestParser {
+            request_line: RequestLine::default(),
             headers: HashMap::new(),
             body: Vec::new(),
             data_content_part: false,
@@ -39,14 +37,15 @@ impl<'a> ProxyResponseParser<'a> {
             body_cursor: 0,
             current_position: 0,
             data: Vec::with_capacity(1024),
-            client_stream,
-            parsing_state: ParsingState::FrontSeparateBody
+            remote_host_stream,
+            parsing_state: ParsingState::FrontSeparateBody,
+            remote_host_name
         }
     }
 }
 
-impl<'a> HttpMessage for ProxyResponseParser<'a> {
-    type HttpType = Response;
+impl<'a> HttpMessage for ProxyRequestParser<'a> {
+    type HttpType = Request;
 
     fn parse_first_line(&mut self) -> Result<usize, FirstLineParseError> {
         if self.data.is_empty() {
@@ -62,8 +61,8 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             .read_to_string(&mut response_line_str)
             .map_err(|_| FirstLineParseError::OtherError)?;
         let parsed_line =
-            parse_response_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
-        self.response_line = parsed_line;
+            parse_request_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
+        self.request_line = parsed_line;
         Ok(next_field_line_index)
     }
 
@@ -129,14 +128,14 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
     }
 
     fn create_parsed_http_payload(&self) -> Self::HttpType {
-        Response::new(
-            self.response_line.clone(),
+        Request::new(
+            self.request_line.clone(),
             self.headers.clone(),
             self.body.clone(),
         )
     }
     fn add_to_body(&mut self) {
-        self.client_stream.write_all(&self.data[self.body_cursor..]).unwrap();
+        self.remote_host_stream.write_all(&self.data[self.body_cursor..]).unwrap();
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
     }
     fn add_chunk_to_body(&mut self) -> Result<(), &str> {
@@ -147,10 +146,10 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             );
             let mut hex_string_upper = format!("{:X}", self.bytes_to_retrieve);
             hex_string_upper.push_str("\r\n");
-            self.client_stream
+            self.remote_host_stream
                 .write_all(hex_string_upper.as_bytes())
                 .unwrap();
-            self.client_stream
+            self.remote_host_stream
                 .write_all(
                     &self.data
                         [self.current_position..self.current_position + self.bytes_to_retrieve + 2],
@@ -171,24 +170,24 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             ParsingState::FirstLine => {},
             ParsingState::Headers => {}
             ParsingState::BodyContentLength => {
-                write_status_line(self.client_stream, StatusCode::Ok).unwrap();
+                write_proxied_request_status_line(self.remote_host_stream, &self.request_line,self.remote_host_name).unwrap();
                 write_proxied_headers(
-                    self.client_stream,
+                    self.remote_host_stream,
                     &self.headers
                 )
                 .unwrap();
 
             },
             ParsingState::BodyChunked => {
-                write_status_line(self.client_stream, StatusCode::Ok).unwrap();
+                write_proxied_request_status_line(self.remote_host_stream, &self.request_line,"httpbin.org").unwrap();
                 write_proxied_headers(
-                    self.client_stream,
+                    self.remote_host_stream,
                     &self.headers
                 )
                 .unwrap();
             }
             ParsingState::Done => {
-                self.client_stream.write_all(b"0\r\n\r\n").unwrap();
+                self.remote_host_stream.write_all(b"0\r\n\r\n").unwrap();
             }
         };
         self.parsing_state = parsing_state
@@ -198,4 +197,3 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
         &self.parsing_state
     }
 }
-

@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::HttpMessage, proxy_response_parser::ProxyResponseParser, request_parser::{Request, RequestParser}, response_writer::{Response, ResponseWriter}
+    http_message_parser::HttpMessage, proxy_request_parser::ProxyRequestParser, proxy_response_parser::ProxyResponseParser, request_parser::{Request, RequestLine, RequestParser}, response_parser::ResponseLine, response_writer::{Response, ResponseWriter}
 };
 
 pub struct Server<F> {
@@ -29,10 +29,6 @@ where
                     write_status_line(&mut connection, StatusCode::Ok)?;
                     let headers = get_preflight_headers();
                     write_headers(&mut connection, headers)?;
-                    return Ok(());
-                }
-                if request.get_request_path()=="/proxy"{
-                    connect_to_remote(&mut connection)?;
                     return Ok(());
                 }
                 let handler = &self.handler;
@@ -62,6 +58,18 @@ where
             }
         }
     }
+    pub fn proxy_listen(&self) {
+        for stream in self.listener.incoming() {
+            println!("new");
+            let stream = match stream {
+                Ok(my_stream) => my_stream,
+                Err(_) => continue,
+            };
+            if let Err(err) = proxy_to_remote(stream) {
+                println!("error occurred handling,{err}");
+            }
+        }
+    }
 }
 
 pub enum StatusCode {
@@ -78,6 +86,18 @@ pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) ->
     };
     status.push_str("\r\n");
     stream_writer.write_all(status.as_bytes())?;
+    Ok(())
+}
+
+pub fn write_proxied_request_status_line<T: Write>(stream_writer: &mut T,request:&RequestLine,remote_host:&str) -> IoResult<()> {
+    let status_line=format!("{} {} HTTP/1.1\r\nHost: {}\r\n",request.get_request_method(),request.get_request_path(),remote_host);
+    stream_writer.write_all(status_line.as_bytes())?;
+    Ok(())
+}
+
+pub fn write_proxied_response_status_line<T: Write>(stream_writer: &mut T,response:&ResponseLine) -> IoResult<()> {
+    let status_line=format!("HTTP/1.1 {} {}\r\n",response.get_status_code(),response.get_status_message());
+    stream_writer.write_all(status_line.as_bytes())?;
     Ok(())
 }
 
@@ -115,6 +135,9 @@ pub fn write_headers<T: Write>(stream_writer: &mut T, headers: HashMap<&str, &st
 pub fn write_proxied_headers<T: Write>(stream_writer: &mut T, headers: &HashMap<String,String>) -> IoResult<()> {
     let mut headers_response = String::new();
     for (key, value) in headers {
+        if key=="host"{
+            continue;
+        }
         headers_response.push_str(key.as_str());
         headers_response.push_str(": ");
         headers_response.push_str(value.as_str());
@@ -125,15 +148,15 @@ pub fn write_proxied_headers<T: Write>(stream_writer: &mut T, headers: &HashMap<
     Ok(())
 }
 
-fn connect_to_remote(client_stream:&mut TcpStream)->IoResult<()>{
+fn proxy_to_remote(mut client_stream:TcpStream)->IoResult<()>{
     let host = "httpbin.org:80";
     let ip_lookup = host.to_socket_addrs()?.next().unwrap();
     let mut connection=TcpStream::connect(ip_lookup).unwrap();
-    connection.write_all(b"GET /stream/100 HTTP/1.1\r\nAccept: */*\r\nHost: httpbin.org\r\nContent-Length:0\r\n\r\n")?;
-    let mut response_parser=ProxyResponseParser::new(client_stream);
+    let mut request_parser = ProxyRequestParser::new(&mut connection,"httpbin.org");
+    request_parser.http_message_from_reader(&mut client_stream).unwrap();
+    let mut response_parser=ProxyResponseParser::new(&mut client_stream);
     let response=response_parser.http_message_from_reader(&mut connection).unwrap();
     let parsed_body=String::from_utf8(response.get_body().to_vec()).unwrap();
-
     println!("response is \n{}",parsed_body);
     Ok(())
 }

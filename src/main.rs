@@ -1,12 +1,11 @@
-use std::{collections::HashMap, fs::File, io::{Result as IoResult, Write}, net::{ TcpStream, ToSocketAddrs}};
+use std::{collections::HashMap, fs::File, io::{Result as IoResult, Write}};
 
-use single_threaded_server::{http_message_parser::HttpMessage, proxy_response_parser::ProxyResponseParser, request_parser::Request, response_parser::ResponseParser, response_writer::{Response, ResponseWriter}, server::{Server, StatusCode}
+use single_threaded_server::{request_parser::Request, response_writer::{Response, ResponseWriter}, server::{Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
     let server = Server::serve(8000, handler)?;
-    server.listen();
-    // connect_to_remote().unwrap();
+    server.proxy_listen();
     Ok(())
 }
 
