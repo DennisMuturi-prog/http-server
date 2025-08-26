@@ -5,10 +5,7 @@ use std::{
 };
 
 use crate::{
-    old_response_parser::find_field_line_index,
-    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
-    response_parser::{parse_response_line, Response, ResponseLine},
-    server::{ write_proxied_headers, write_status_line, StatusCode},
+    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}, old_response_parser::find_field_line_index, response_parser::{parse_response_line, Response, ResponseLine}, server::{ write_proxied_headers, write_proxied_response_status_line, write_status_line, StatusCode}
 };
 
 
@@ -71,9 +68,10 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             self.body.clone(),
         )
     }
-    fn add_to_body(&mut self) {
+    fn add_to_body(&mut self)->Result<(),&str> {
         self.client_stream.write_all(&self.data[self.body_cursor..]).unwrap();
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
+        Ok(())
     }
     fn add_chunk_to_body(&mut self) -> Result<(), &str> {
         let end_index = self.current_position + self.bytes_to_retrieve;
@@ -85,46 +83,47 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             hex_string_upper.push_str("\r\n");
             self.client_stream
                 .write_all(hex_string_upper.as_bytes())
-                .unwrap();
+                .map_err(|_|"failed to write to other proxy")?;
             self.client_stream
                 .write_all(
                     &self.data
                         [self.current_position..self.current_position + self.bytes_to_retrieve + 2],
                 )
-                .unwrap();
+                .map_err(|_|"failed to write to other proxy")?;
 
             Ok(())
         } else {
             Err("wrong transfer chunk encoding")
         }
     }
-    fn set_parsing_state(&mut self, parsing_state: ParsingState) {
+    fn set_parsing_state(&mut self, parsing_state: ParsingState)->Result<(),&str> {
         match parsing_state {
             ParsingState::FrontSeparateBody => {}
             ParsingState::FirstLine => {},
             ParsingState::Headers => {}
             ParsingState::BodyContentLength => {
-                write_status_line(self.client_stream, StatusCode::Ok).unwrap();
+                write_proxied_response_status_line(self.client_stream, &self.response_line).unwrap();
                 write_proxied_headers(
                     self.client_stream,
                     &self.headers
                 )
-                .unwrap();
+                .map_err(|_|"failed to write to other proxy")?;
 
             },
             ParsingState::BodyChunked => {
-                write_status_line(self.client_stream, StatusCode::Ok).unwrap();
+                write_proxied_response_status_line(self.client_stream, &self.response_line).unwrap();
                 write_proxied_headers(
                     self.client_stream,
                     &self.headers
                 )
-                .unwrap();
+                .map_err(|_|"failed to write to other proxy")?;
             }
             ParsingState::Done => {
-                self.client_stream.write_all(b"0\r\n\r\n").unwrap();
+                self.client_stream.write_all(b"0\r\n\r\n").map_err(|_|"failed to write to other proxy")?;
             }
         };
-        self.parsing_state = parsing_state
+        self.parsing_state = parsing_state;
+        Ok(())
     }
     fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
         self.bytes_to_retrieve=bytes_size;

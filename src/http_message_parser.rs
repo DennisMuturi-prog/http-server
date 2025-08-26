@@ -7,7 +7,7 @@ use std::{
 pub enum ParseError {
     NotEnoughBytes,
     ResponseLinePartsMissing,
-    OtherError,
+    OtherError(String),
     MissingHttpVersion,
     InvalidHeader(String),
     HeadersDone,
@@ -57,7 +57,7 @@ pub trait HttpMessage {
                 ParsingState::FrontSeparateBody => {
                     match self.parse_front() {
                         Ok(_) => {
-                            self.set_parsing_state(ParsingState::FirstLine);
+                            self.set_parsing_state(ParsingState::FirstLine)?;
                         }
                         Err(_) => {
                             n = stream
@@ -70,7 +70,7 @@ pub trait HttpMessage {
                 ParsingState::FirstLine => {
                     match self.parse_first_line() {
                         Ok(_) => {
-                            self.set_parsing_state(ParsingState::Headers);
+                            self.set_parsing_state(ParsingState::Headers)?;
                         }
                         Err(err) => match err {
                             FirstLineParseError::OtherError => {
@@ -95,7 +95,7 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             HeaderParseError::HeadersDone => {
-                                println!("headers:{:?}",self.headers());
+                                // println!("headers:{:?}",self.headers());
                                 let content_length = match self.header("content-length") {
                                     Some(content_len) => {
                                         content_len
@@ -105,15 +105,15 @@ pub trait HttpMessage {
                                             match self.header("transfer-encoding") {
                                                 Some(chunking) => chunking,
                                                 None => {
-                                                    self.set_parsing_state(ParsingState::BodyContentLength);
+                                                    self.set_parsing_state(ParsingState::BodyContentLength)?;
                                                     
                                                     return Ok(self.create_parsed_http_payload());
                                                 }
                                             };
                                         if transfer_encoding_chunked == "chunked" {
-                                            self.set_parsing_state(ParsingState::BodyChunked);
+                                            self.set_parsing_state(ParsingState::BodyChunked)?;
                                         } else {
-                                            self.set_parsing_state(ParsingState::BodyContentLength);
+                                            self.set_parsing_state(ParsingState::BodyContentLength)?;
                                             return Ok(self.create_parsed_http_payload());
                                         }
                                         continue;
@@ -123,9 +123,9 @@ pub trait HttpMessage {
                                 .map_err(|_| {
                                     "coluld not parse content length header".to_string()
                                 })?;
-                                self.set_parsing_state(ParsingState::BodyContentLength);
+                                self.set_parsing_state(ParsingState::BodyContentLength)?;
                                 if self.body_len() >= content_length {
-                                    self.add_to_body();
+                                    self.add_to_body()?;
                                     return Ok(self.create_parsed_http_payload());
                                 }
                             }
@@ -149,7 +149,7 @@ pub trait HttpMessage {
                         .parse::<usize>()
                         .map_err(|_| "could not parse content length from header".to_string())?;
                     if self.body_len() >= content_length {
-                        self.add_to_body();
+                        self.add_to_body()?;
                         return Ok(self.create_parsed_http_payload());
                     }
                 }
@@ -164,9 +164,9 @@ pub trait HttpMessage {
                                         .map_err(|_| "error reading stream".to_string())?;
                                     self.add_to_data(&buf[..n]);
                                 }
-                                ParseError::OtherError => {
+                                ParseError::OtherError(err) => {
                                     return Err(
-                                        "an error occurred transfer chunked encoding failed"
+                                        err
                                             .to_string(),
                                     );
                                 }
@@ -184,7 +184,7 @@ pub trait HttpMessage {
                                     self.add_to_data(&buf[..n]);
                                 }
                                 ParseError::HeadersDone => {
-                                    self.set_parsing_state(ParsingState::Done);
+                                    self.set_parsing_state(ParsingState::Done)?;
                                     return Ok(self.create_parsed_http_payload());
                                 }
                                 _ => return Ok(self.create_parsed_http_payload()),
@@ -235,9 +235,9 @@ pub trait HttpMessage {
 
         cursor
             .read_to_string(&mut body_chunk_size_str)
-            .map_err(|_| ParseError::OtherError)?;
+            .map_err(|_| ParseError::OtherError("error in reading string to cursor".to_string()))?;
         let bytes_to_be_retrieved =
-            usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_| ParseError::OtherError)?;
+            usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_| ParseError::OtherError("error in parsing from hexadecimal string".to_string()))?;
         if bytes_to_be_retrieved == 0 {
             return Err(ParseError::HeadersDone);
         }
@@ -257,15 +257,15 @@ pub trait HttpMessage {
         };
 
         self.add_chunk_to_body()
-            .map_err(|_| ParseError::OtherError)?;
+            .map_err(|err| ParseError::OtherError(err.to_owned()))?;
         self.set_current_position(next_body_data_size_index);
         self.set_body_chunk_part();
         Ok(2)
     }
     fn parse_first_line(&mut self) -> Result<usize, FirstLineParseError>;
-    fn add_to_body(&mut self);
+    fn add_to_body(&mut self)->Result<(), &str>;
     fn add_chunk_to_body(&mut self) -> Result<(), &str>;
-    fn set_parsing_state(&mut self, parsing_state: ParsingState);
+    fn set_parsing_state(&mut self, parsing_state: ParsingState)->Result<(),&str>;
     fn parsing_state(&self) -> &ParsingState;
 
     fn create_parsed_http_payload(&self) -> Self::HttpType;

@@ -152,8 +152,9 @@ impl HttpMessage for ResponseParser{
     }
     
     
-    fn add_to_body(&mut self) {
+    fn add_to_body(&mut self)->Result<(),&str> {
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
+        Ok(())
     }
     
     fn add_chunk_to_body(&mut self)->Result<(),&str> {
@@ -169,8 +170,9 @@ impl HttpMessage for ResponseParser{
     
     
     
-    fn set_parsing_state(&mut self,parsing_state:ParsingState) {
-        self.parsing_state=parsing_state
+    fn set_parsing_state(&mut self,parsing_state:ParsingState)->Result<(),&str> {
+        self.parsing_state=parsing_state;
+        Ok(())
     }
     
     fn headers(&self) -> &HashMap<String, String> {

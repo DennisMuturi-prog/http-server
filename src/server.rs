@@ -89,7 +89,7 @@ pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) ->
     Ok(())
 }
 
-pub fn write_proxied_request_status_line<T: Write>(stream_writer: &mut T,request:&RequestLine,remote_host:&str) -> IoResult<()> {
+pub fn write_proxied_request_line<T: Write>(stream_writer: &mut T,request:&RequestLine,remote_host:&str) -> IoResult<()> {
     let status_line=format!("{} {} HTTP/1.1\r\nHost: {}\r\n",request.method(),request.request_target(),remote_host);
     stream_writer.write_all(status_line.as_bytes())?;
     Ok(())
