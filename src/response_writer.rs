@@ -32,9 +32,9 @@ impl<'a> Headers<'a> {
         let headers=get_common_headers();
         let mut headers_response = String::new();
         for (key, value) in headers {
-            headers_response.push_str(&key);
+            headers_response.push_str(key);
             headers_response.push_str(": ");
-            headers_response.push_str(&value);
+            headers_response.push_str(value);
             headers_response.push_str("\r\n");
         }
         self.connection.write_all(headers_response.as_bytes())?;
@@ -53,9 +53,9 @@ impl<'a> Headers<'a> {
             headers.insert(key, value);
         }
         for (key, value) in headers {
-            headers_response.push_str(&key);
+            headers_response.push_str(key);
             headers_response.push_str(": ");
-            headers_response.push_str(&value);
+            headers_response.push_str(value);
             headers_response.push_str("\r\n");
         }
         self.connection.write_all(headers_response.as_bytes())?;
@@ -78,7 +78,7 @@ impl<'a> Body<'a> {
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
         self.connection.write_all(&body_bytes)?;
-        Ok(Response{ anything:0 })
+        Ok(Response{})
     }
     pub fn write_body_html(self,body:&str)->IoResult<Response>{
         let mut body_bytes=Vec::<u8>::new();
@@ -87,11 +87,11 @@ impl<'a> Body<'a> {
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
         self.connection.write_all(&body_bytes)?;
-        Ok(Response{ anything:0 })
+        Ok(Response{ })
     }
     pub fn write_empty_body(self)->IoResult<Response>{
         self.connection.write_all(b"Content-Length: 0\r\n\r\n")?;
-        Ok(Response{ anything:0 })
+        Ok(Response{})
     }
     pub fn write_chunk(&mut self,chunk:&[u8])->IoResult<()>{
         self.connection.write_all(chunk)?;
@@ -100,11 +100,9 @@ impl<'a> Body<'a> {
     pub fn write_chunked_body_done(&mut self)->IoResult<Response>{
         self.connection.write_all(b"0\r\n\r\n")?;
         Ok(Response{
-            anything:0
         })
     }
 }
 
 pub struct Response{
-    anything:u8
 }

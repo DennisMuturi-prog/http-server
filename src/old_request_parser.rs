@@ -5,7 +5,7 @@ use std::{
     net::TcpStream,
 };
 
-use crate::chunked_parsing::{find_field_line_index, find_payload_index, is_valid_field_name};
+use crate::old_response_parser::{find_field_line_index, find_payload_index, is_valid_field_name};
 
 pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Error>> {
     let mut buf = [0; 1024];
@@ -145,9 +145,8 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
             if request.body.len() >= content_length {
                 return Ok(request);
             }
-        } else {
-            if request.data_content_part {
-                if request.current_chunk.len() == 0 {
+        } else if request.data_content_part {
+                if request.current_chunk.is_empty() {
                     n = stream.read(&mut buf)?;
                     request.body.extend_from_slice(&buf[..n]);
                 }
@@ -165,7 +164,7 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
                     },
                 }
             } else {
-                if request.body.len() == 0 {
+                if request.body.is_empty() {
                     n = stream.read(&mut buf)?;
                     request.body.extend_from_slice(&buf[..n]);
                 }
@@ -185,7 +184,7 @@ pub fn request_from_reader(stream: &mut TcpStream) -> Result<Request, Box<dyn Er
             }
         }
     }
-}
+
 
 #[derive(Debug)]
 enum ParseError {
@@ -348,10 +347,16 @@ fn parse_headers(header_field: &str) -> Result<(String, String), ParseError> {
 }
 
 #[derive(Debug, Default)]
-struct RequestLine {
+pub struct RequestLine {
     http_version: String,
     request_target: String,
     method: String,
+}
+
+impl RequestLine {
+    pub fn http_version(&self) -> &str {
+        &self.http_version
+    }
 }
 
 fn parse_request_line(request_line: &str) -> Result<RequestLine, ParseError> {

@@ -10,16 +10,16 @@ fn main() -> IoResult<()> {
 }
 
 fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Response> {
-    println!("request:{:?}",request.get_all_headers());
-    let request_path = request.get_request_path();
-    let content_type_header=match request.get_header("content-type"){
+    println!("request:{:?}",request.headers());
+    let request_path = request.request_path();
+    let content_type_header=match request.header("content-type"){
         Some(accept) => accept,
         None => "",
     };
     if content_type_header=="image/jpeg"{
         println!("hello");
         let mut file=File::create("muturi.jpg").unwrap();
-        file.write_all(request.get_body()).unwrap();
+        file.write_all(request.body()).unwrap();
     }
     if request_path == "/yourproblem" {
         let response_message = "Your problem is not my problem\n";

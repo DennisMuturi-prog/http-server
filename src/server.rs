@@ -22,10 +22,10 @@ where
         Ok(Server { listener, handler })
     }
     fn handle(&self, mut connection: TcpStream) -> IoResult<()> {
-        let mut request_parser = RequestParser::new();
+        let mut request_parser = RequestParser::default();
         match request_parser.http_message_from_reader(&mut connection) {
             Ok(request) => {
-                if request.get_request_method() == "OPTIONS" {
+                if request.request_method() == "OPTIONS" {
                     write_status_line(&mut connection, StatusCode::Ok)?;
                     let headers = get_preflight_headers();
                     write_headers(&mut connection, headers)?;
@@ -90,7 +90,7 @@ pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) ->
 }
 
 pub fn write_proxied_request_status_line<T: Write>(stream_writer: &mut T,request:&RequestLine,remote_host:&str) -> IoResult<()> {
-    let status_line=format!("{} {} HTTP/1.1\r\nHost: {}\r\n",request.get_request_method(),request.get_request_path(),remote_host);
+    let status_line=format!("{} {} HTTP/1.1\r\nHost: {}\r\n",request.method(),request.request_target(),remote_host);
     stream_writer.write_all(status_line.as_bytes())?;
     Ok(())
 }

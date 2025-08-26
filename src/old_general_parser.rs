@@ -9,7 +9,7 @@ pub fn response_from_reader_general(
     stream: &mut TcpStream,
 ) -> Result<ResponseParser, Box<dyn Error>> {
     let mut buf = [0; 1024];
-    let mut response = ResponseParser::new();
+    let mut response = ResponseParser::default();
     let mut response_line_parsed = 0;
     let mut n = stream.read(&mut buf)?;
     response.add_to_data(&buf[..n]);
@@ -51,11 +51,11 @@ pub fn response_from_reader_general(
                 Err(err) => match err {
                     HeaderParseError::HeadersDone => {
                         response_line_parsed = 3;
-                        let content_length = match response.get_header("content-length") {
+                        let content_length = match response.header("content-length") {
                             Some(content_len) => content_len,
                             None => {
                                 let transfer_encoding_chunked =
-                                    match response.get_header("transfer-encoding") {
+                                    match response.header("transfer-encoding") {
                                         Some(chunking) => chunking,
                                         None => {
                                             return Ok(response);
@@ -70,7 +70,7 @@ pub fn response_from_reader_general(
                             }
                         }
                         .parse::<usize>()?;
-                        if response.get_body_len() >= content_length {
+                        if response.body_len() >= content_length {
                             return Ok(response);
                         }
                     }
@@ -86,14 +86,13 @@ pub fn response_from_reader_general(
             n = stream.read(&mut buf)?;
             response.add_to_data(&buf[..n]);
             let content_length = response
-                .get_header("content-length")
+                .header("content-length")
                 .ok_or("error occurred")?
                 .parse::<usize>()?;
-            if response.get_body_len() >= content_length {
+            if response.body_len() >= content_length {
                 return Ok(response);
             }
-        } else {
-            if response.get_data_content_part_state() {
+        } else if response.body_chunk_part() {
                 match response.add_chunked_body_content() {
                     Ok(_) => {}
                     Err(err) => match err {
@@ -124,4 +123,4 @@ pub fn response_from_reader_general(
             }
         }
     }
-}
+

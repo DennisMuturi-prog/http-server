@@ -1,27 +1,34 @@
 use std::{collections::HashMap, io::{Cursor, Read}};
 
-use crate::{chunked_parsing::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}};
+use crate::{old_response_parser::find_field_line_index, http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}};
 #[derive(Debug, Default,Clone)]
 pub struct RequestLine {
     http_version: String,
     request_target: String,
     method: String,
 }
-impl RequestLine{
-    pub fn get_request_method(&self)->&str{
-        &self.method
+
+impl RequestLine {
+    pub fn http_version(&self) -> &str {
+        &self.http_version
     }
-    pub fn get_request_path(&self)->&str{
+    
+    pub fn request_target(&self) -> &str {
         &self.request_target
     }
+    
+    pub fn method(&self) -> &str {
+        &self.method
+    }
 }
+
 
 // #[derive(Debug)]
 pub struct RequestParser{
     request_line: RequestLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
-    data_content_part: bool,
+    body_chunk_part: bool,
     bytes_to_retrieve: usize,
     body_cursor:usize,
     current_position:usize,
@@ -29,9 +36,15 @@ pub struct RequestParser{
     parsing_state:ParsingState
 
 }
-impl RequestParser{
-    pub fn new()->Self{
-        Self { request_line: RequestLine::default(), headers: HashMap::new(), body: Vec::new(), data_content_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),parsing_state:ParsingState::FrontSeparateBody}
+
+
+
+
+
+
+impl Default for RequestParser{
+    fn default()->Self{
+        Self { request_line: RequestLine::default(), headers: HashMap::new(), body: Vec::new(), body_chunk_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),parsing_state:ParsingState::FrontSeparateBody}
     }
 }
 
@@ -48,20 +61,23 @@ impl Request{
         Self { request_line, headers, body }
 
     }
-    pub fn get_request_method(&self)->&str{
+    pub fn request_method(&self)->&str{
         &self.request_line.method
     }
-    pub fn get_request_path(&self)->&str{
+    pub fn request_path(&self)->&str{
         &self.request_line.request_target
     }
-    pub fn get_body(&self)->&[u8]{
-        &self.body
-    }
-    pub fn get_header(&self,header:&str)->Option<&String>{
+    
+    pub fn header(&self,header:&str)->Option<&String>{
         self.headers.get(header)
     }
-    pub fn get_all_headers(&self)->HashMap<String,String>{
-        self.headers.clone()
+    
+    pub fn headers(&self) -> &HashMap<String, String> {
+        &self.headers
+    }
+    
+    pub fn body(&self) -> &[u8] {
+        &self.body
     }
 }
 
@@ -82,39 +98,38 @@ impl HttpMessage for RequestParser{
             .read_to_string(&mut response_line_str)
             .map_err(|_| FirstLineParseError::OtherError)?;
         let parsed_line =
-            parse_request_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
+        parse_request_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
         self.request_line = parsed_line;
         Ok(next_field_line_index)
     }
     
+    fn create_parsed_http_payload(&self)->Self::HttpType {
+        Request{
+            request_line: self.request_line.clone(),
+            headers: self.headers.clone(),
+            body: self.body.clone(),
+        }
+    }
     
     fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
         self.bytes_to_retrieve=bytes_size;
     }
     
-    fn set_data_content_part(&mut self) {
-        self.data_content_part=!self.data_content_part;
+    fn set_body_chunk_part(&mut self) {
+        self.body_chunk_part = !self.body_chunk_part;
     }
     
     
-    fn get_data(&self) -> &[u8] {
-        &self.data
-    }
     
-    fn get_current_part(&self) -> &[u8] {
+    
+    fn current_part(&self) -> &[u8] {
         &self.data[self.current_position..]
     }
     
-    fn get_current_position(&self) -> usize {
-        self.current_position
-    }
+    
     
     fn set_current_position(&mut self, index: usize) {
         self.current_position+=index;
-    }
-    
-    fn get_body_cursor(&self) -> usize {
-        self.body_cursor
     }
     
     fn set_body_cursor(&mut self, index: usize) {
@@ -141,29 +156,18 @@ impl HttpMessage for RequestParser{
     }
     
     
-    fn get_header(&self,key:&str)->Option<&String> {
-        self.headers.get(key)
-    }
     
-    fn get_body_len(&self)->usize {
+    
+    fn body_len(&self)->usize {
         self.data.len()-self.body_cursor
     }
     
-    fn get_data_content_part_state(&self)->bool {
-        self.data_content_part
-    }
+    
     fn free_parsed_data(&mut self){
         self.current_position=0;
 
     }
     
-    fn create_parsed_http_payload(&self)->Self::HttpType {
-        Request{
-            request_line: self.request_line.clone(),
-            headers: self.headers.clone(),
-            body: self.body.clone(),
-        }
-    }
     
     fn add_to_body(&mut self) {
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
@@ -180,16 +184,37 @@ impl HttpMessage for RequestParser{
         }
     }
     
-    fn get_headers(&self) ->HashMap<String, String>{
-        self.headers.clone()
-    }
+    
     
     fn set_parsing_state(&mut self,parsing_state:ParsingState) {
         self.parsing_state=parsing_state
     }
     
-    fn get_parsing_state(&self)->&ParsingState {
+    fn headers(&self) -> &HashMap<String, String> {
+        &self.headers
+    }
+    
+    fn body_chunk_part(&self) -> bool {
+        self.body_chunk_part
+    }
+    
+    fn body_cursor(&self) -> usize {
+        self.body_cursor
+    }
+    
+    fn current_position(&self) -> usize {
+        self.current_position
+    }
+    
+    fn parsing_state(&self) -> &ParsingState {
         &self.parsing_state
+    }
+    fn header(&self,key:&str)->Option<&String> {
+        self.headers.get(key)
+    }
+
+    fn data(&self) -> &[u8] {
+        &self.data
     }
 
 }

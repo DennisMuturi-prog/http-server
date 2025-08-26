@@ -53,7 +53,7 @@ pub trait HttpMessage {
             .map_err(|_| "error reading stream".to_string())?;
         self.add_to_data(&buf[..n]);
         loop {
-            match self.get_parsing_state() {
+            match self.parsing_state() {
                 ParsingState::FrontSeparateBody => {
                     match self.parse_front() {
                         Ok(_) => {
@@ -95,14 +95,14 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             HeaderParseError::HeadersDone => {
-                                println!("headers:{:?}",self.get_headers());
-                                let content_length = match self.get_header("content-length") {
+                                println!("headers:{:?}",self.headers());
+                                let content_length = match self.header("content-length") {
                                     Some(content_len) => {
                                         content_len
                                     }
                                     None => {
                                         let transfer_encoding_chunked =
-                                            match self.get_header("transfer-encoding") {
+                                            match self.header("transfer-encoding") {
                                                 Some(chunking) => chunking,
                                                 None => {
                                                     self.set_parsing_state(ParsingState::BodyContentLength);
@@ -124,7 +124,7 @@ pub trait HttpMessage {
                                     "coluld not parse content length header".to_string()
                                 })?;
                                 self.set_parsing_state(ParsingState::BodyContentLength);
-                                if self.get_body_len() >= content_length {
+                                if self.body_len() >= content_length {
                                     self.add_to_body();
                                     return Ok(self.create_parsed_http_payload());
                                 }
@@ -133,7 +133,7 @@ pub trait HttpMessage {
                                 return Err("another error".into());
                             }
                             HeaderParseError::InvalidHeader(cause) => {
-                                return Err(cause.into());
+                                return Err(cause);
                             }
                         },
                     };
@@ -144,17 +144,17 @@ pub trait HttpMessage {
                         .map_err(|_| "error reading stream".to_string())?;
                     self.add_to_data(&buf[..n]);
                     let content_length = self
-                        .get_header("content-length")
+                        .header("content-length")
                         .ok_or("error occurred")?
                         .parse::<usize>()
                         .map_err(|_| "could not parse content length from header".to_string())?;
-                    if self.get_body_len() >= content_length {
+                    if self.body_len() >= content_length {
                         self.add_to_body();
                         return Ok(self.create_parsed_http_payload());
                     }
                 }
                 ParsingState::BodyChunked => {
-                    if self.get_data_content_part_state() {
+                    if self.body_chunk_part() {
                         match self.add_chunked_body_content() {
                             Ok(_) => {}
                             Err(err) => match err {
@@ -200,16 +200,16 @@ pub trait HttpMessage {
     }
 
     fn parse_front(&mut self) -> Result<usize, NotEnoughBytes> {
-        let first_index_of_body = find_payload_index(self.get_data()).ok_or(NotEnoughBytes)?;
+        let first_index_of_body = find_payload_index(self.data()).ok_or(NotEnoughBytes)?;
         self.set_body_cursor(first_index_of_body);
         Ok(first_index_of_body)
     }
     fn parse_headers(&mut self) -> Result<usize, HeaderParseError> {
-        if self.get_current_position() >= self.get_body_cursor() - 2 {
+        if self.current_position() >= self.body_cursor() - 2 {
             self.set_current_position(2);
             return Err(HeaderParseError::HeadersDone);
         }
-        let headers_part = self.get_current_part();
+        let headers_part = self.current_part();
         let next_field_line_index = find_field_line_index(headers_part).unwrap_or(0);
         let mut cursor = Cursor::new(&headers_part[..next_field_line_index - 2]);
         let mut header_line_str = String::new();
@@ -223,7 +223,7 @@ pub trait HttpMessage {
         Ok(next_field_line_index)
     }
     fn parse_chunked_body(&mut self) -> Result<usize, ParseError> {
-        let body = &self.get_current_part();
+        let body = &self.current_part();
         let next_body_data_index = match find_field_line_index(body) {
             Some(index) => index,
             None => {
@@ -243,12 +243,12 @@ pub trait HttpMessage {
         }
         self.set_current_position(next_body_data_index);
         self.set_bytes_to_retrieve(bytes_to_be_retrieved);
-        self.set_data_content_part();
+        self.set_body_chunk_part();
 
         Ok(next_body_data_index)
     }
     fn add_chunked_body_content(&mut self) -> Result<usize, ParseError> {
-        let body = &self.get_current_part();
+        let body = &self.current_part();
         let next_body_data_size_index = match find_field_line_index(body) {
             Some(index) => index,
             None => {
@@ -259,34 +259,34 @@ pub trait HttpMessage {
         self.add_chunk_to_body()
             .map_err(|_| ParseError::OtherError)?;
         self.set_current_position(next_body_data_size_index);
-        self.set_data_content_part();
+        self.set_body_chunk_part();
         Ok(2)
     }
     fn parse_first_line(&mut self) -> Result<usize, FirstLineParseError>;
     fn add_to_body(&mut self);
     fn add_chunk_to_body(&mut self) -> Result<(), &str>;
     fn set_parsing_state(&mut self, parsing_state: ParsingState);
-    fn get_parsing_state(&self) -> &ParsingState;
+    fn parsing_state(&self) -> &ParsingState;
 
     fn create_parsed_http_payload(&self) -> Self::HttpType;
-    fn get_headers(&self) -> HashMap<String, String>;
+    fn headers(&self) -> &HashMap<String, String>;
 
     fn set_bytes_to_retrieve(&mut self, bytes_size: usize);
-    fn set_data_content_part(&mut self);
+    fn set_body_chunk_part(&mut self);
 
-    fn get_data(&self) -> &[u8];
+    fn data(&self) -> &[u8];
     fn free_parsed_data(&mut self);
-    fn get_current_part(&self) -> &[u8];
-    fn get_current_position(&self) -> usize;
+    fn current_position(&self) -> usize;
     fn set_current_position(&mut self, index: usize);
-    fn get_body_cursor(&self) -> usize;
+    fn body_cursor(&self) -> usize;
     fn set_body_cursor(&mut self, index: usize);
 
     fn set_headers(&mut self, key: String, value: String);
     fn add_to_data(&mut self, buf: &[u8]);
-    fn get_header(&self, key: &str) -> Option<&String>;
-    fn get_body_len(&self) -> usize;
-    fn get_data_content_part_state(&self) -> bool;
+    fn header(&self, key: &str) -> Option<&String>;
+    fn body_len(&self) -> usize;
+    fn current_part(&self) -> &[u8];
+    fn body_chunk_part(&self) -> bool;
 }
 
 fn parse_headers(header_field: &str) -> Result<(String, String), HeaderParseError> {

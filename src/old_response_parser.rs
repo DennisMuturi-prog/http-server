@@ -132,9 +132,8 @@ pub fn response_from_reader(stream: &mut TcpStream) -> Result<Response, Box<dyn 
             if response.body.len() >= content_length {
                 return Ok(response);
             }
-        } else { 
-            if response.data_content_part {
-                if response.current_chunk.len() == 0 {
+        } else if response.data_content_part {
+                if response.current_chunk.is_empty() {
                     n = stream.read(&mut buf)?;
                     response.body.extend_from_slice(&buf[..n]);
                 }
@@ -152,7 +151,7 @@ pub fn response_from_reader(stream: &mut TcpStream) -> Result<Response, Box<dyn 
                     },
                 }
             } else {
-                if response.body.len() == 0 {
+                if response.body.is_empty(){
                     n = stream.read(&mut buf)?;
                     response.body.extend_from_slice(&buf[..n]);
                 }
@@ -172,7 +171,6 @@ pub fn response_from_reader(stream: &mut TcpStream) -> Result<Response, Box<dyn 
             }
         }
     }
-}
 
 #[derive(Debug)]
 enum ParseError {
@@ -197,10 +195,24 @@ pub struct Response {
     body_cursor:usize
 }
 #[derive(Debug, Default)]
-struct ResponseLine {
+pub struct ResponseLine {
     http_version: String,
     status_code: String,
     status_message: String,
+}
+
+impl ResponseLine {
+    pub fn http_version(&self) -> &str {
+        &self.http_version
+    }
+    
+    pub fn status_code(&self) -> &str {
+        &self.status_code
+    }
+    
+    pub fn status_message(&self) -> &str {
+        &self.status_message
+    }
 }
 impl Response{
     fn parse_front(&mut self, response_line: &[u8]) -> Result<usize, ParseError> {

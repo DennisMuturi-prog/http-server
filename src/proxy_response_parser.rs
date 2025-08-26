@@ -5,22 +5,19 @@ use std::{
 };
 
 use crate::{
-    chunked_parsing::find_field_line_index,
+    old_response_parser::find_field_line_index,
     http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
     response_parser::{parse_response_line, Response, ResponseLine},
     server::{ write_proxied_headers, write_status_line, StatusCode},
 };
 
-enum HttpCycle{
-    ResponseCycle,
-    RequestCycle
-}
+
 
 pub struct ProxyResponseParser<'a> {
     response_line: ResponseLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
-    data_content_part: bool,
+    body_chunk_part: bool,
     bytes_to_retrieve: usize,
     body_cursor: usize,
     current_position: usize,
@@ -34,7 +31,7 @@ impl<'a> ProxyResponseParser<'a> {
             response_line: ResponseLine::default(),
             headers: HashMap::new(),
             body: Vec::new(),
-            data_content_part: false,
+            body_chunk_part: false,
             bytes_to_retrieve: 0,
             body_cursor: 0,
             current_position: 0,
@@ -65,67 +62,6 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             parse_response_line(&response_line_str).map_err(|_| FirstLineParseError::OtherError)?;
         self.response_line = parsed_line;
         Ok(next_field_line_index)
-    }
-
-    fn set_bytes_to_retrieve(&mut self, bytes_size: usize) {
-        self.bytes_to_retrieve = bytes_size;
-    }
-
-    fn set_data_content_part(&mut self) {
-        self.data_content_part = !self.data_content_part;
-    }
-
-    fn get_data(&self) -> &[u8] {
-        &self.data
-    }
-
-    fn get_current_part(&self) -> &[u8] {
-        &self.data[self.current_position..]
-    }
-
-    fn get_current_position(&self) -> usize {
-        self.current_position
-    }
-
-    fn set_current_position(&mut self, index: usize) {
-        self.current_position += index;
-    }
-
-    fn get_body_cursor(&self) -> usize {
-        self.body_cursor
-    }
-
-    fn set_body_cursor(&mut self, index: usize) {
-        self.body_cursor += index;
-    }
-
-    fn set_headers(&mut self, key: String, value: String) {
-        self.headers
-            .entry(key)
-            .and_modify(|existing| {
-                existing.push(','); // HTTP header values separated by comma-space
-                existing.push_str(&value);
-            })
-            .or_insert(value);
-    }
-
-    fn add_to_data(&mut self, buf: &[u8]) {
-        self.data.extend_from_slice(buf);
-    }
-
-    fn get_header(&self, key: &str) -> Option<&String> {
-        self.headers.get(key)
-    }
-
-    fn get_body_len(&self) -> usize {
-        self.data.len() - self.body_cursor
-    }
-
-    fn get_data_content_part_state(&self) -> bool {
-        self.data_content_part
-    }
-    fn free_parsed_data(&mut self) {
-        self.current_position = 0;
     }
 
     fn create_parsed_http_payload(&self) -> Self::HttpType {
@@ -162,9 +98,6 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
             Err("wrong transfer chunk encoding")
         }
     }
-    fn get_headers(&self) -> HashMap<String, String> {
-        self.headers.clone()
-    }
     fn set_parsing_state(&mut self, parsing_state: ParsingState) {
         match parsing_state {
             ParsingState::FrontSeparateBody => {}
@@ -193,9 +126,89 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
         };
         self.parsing_state = parsing_state
     }
+    fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
+        self.bytes_to_retrieve=bytes_size;
+    }
+    
+    fn set_body_chunk_part(&mut self) {
+        self.body_chunk_part = !self.body_chunk_part;
+    }
+    
+    
+    
+    
+    fn current_part(&self) -> &[u8] {
+        &self.data[self.current_position..]
+    }
+    
+    
+    
+    fn set_current_position(&mut self, index: usize) {
+        self.current_position+=index;
+    }
+    
+    fn set_body_cursor(&mut self, index: usize) {
+        self.body_cursor+=index;
+    }
+    
+    
+    
+    fn set_headers(&mut self, key: String, value: String) {
+        self.headers
+            .entry(key)
+            .and_modify(|existing| {
+                existing.push(','); // HTTP header values separated by comma-space
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+        
+    }
+    
+    
+    
+    fn add_to_data(&mut self,buf:&[u8]) {
+        self.data.extend_from_slice(buf);
+    }
+    
+    
+    
+    
+    fn body_len(&self)->usize {
+        self.data.len()-self.body_cursor
+    }
+    
+    
+    fn free_parsed_data(&mut self){
+        self.current_position=0;
 
-    fn get_parsing_state(&self) -> &ParsingState {
+    }
+    
+    
+    fn headers(&self) -> &HashMap<String, String> {
+        &self.headers
+    }
+    
+    fn body_chunk_part(&self) -> bool {
+        self.body_chunk_part
+    }
+    
+    fn body_cursor(&self) -> usize {
+        self.body_cursor
+    }
+    
+    fn current_position(&self) -> usize {
+        self.current_position
+    }
+    
+    fn parsing_state(&self) -> &ParsingState {
         &self.parsing_state
+    }
+    fn header(&self,key:&str)->Option<&String> {
+        self.headers.get(key)
+    }
+
+    fn data(&self) -> &[u8] {
+        &self.data
     }
 }
 
