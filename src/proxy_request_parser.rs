@@ -5,15 +5,16 @@ use std::{
 };
 
 use crate::{
-    old_response_parser::find_field_line_index,
     http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
-    request_parser::{Request, RequestLine, parse_request_line},
-    server::{write_proxied_headers, write_proxied_request_line},
+    old_response_parser::find_field_line_index,
+    request_parser::{parse_request_line, Request, RequestLine},
+    server::{ write_proxied_headers, write_proxied_request_line},
 };
 
 pub struct ProxyRequestParser<'a> {
     request_line: RequestLine,
     headers: HashMap<String, String>,
+    trailer_headers: HashMap<String, String>,
     body: Vec<u8>,
     body_chunk_part: bool,
     bytes_to_retrieve: usize,
@@ -32,6 +33,7 @@ impl<'a> ProxyRequestParser<'a> {
         ProxyRequestParser {
             request_line: RequestLine::default(),
             headers: HashMap::new(),
+            trailer_headers: HashMap::new(),
             body: Vec::new(),
             body_chunk_part: false,
             bytes_to_retrieve: 0,
@@ -80,36 +82,33 @@ impl<'a> HttpMessage for ProxyRequestParser<'a> {
             self.body.extend_from_slice(
                 &self.data[self.current_position..self.current_position + self.bytes_to_retrieve],
             );
-            let mut hex_string_upper = format!("{:X}", self.bytes_to_retrieve);
-            hex_string_upper.push_str("\r\n");
+            let hex_string_upper = format!("{:X}\r\n", self.bytes_to_retrieve);
             self.remote_host_stream
                 .write_all(hex_string_upper.as_bytes())
-                .map_err(|_|"failed to write to other proxy")?;
+                .map_err(|_| "failed to write to other proxy")?;
             self.remote_host_stream
                 .write_all(
                     &self.data
                         [self.current_position..self.current_position + self.bytes_to_retrieve + 2],
                 )
-                .map_err(|_|"failed to write to other proxy")?;
+                .map_err(|_| "failed to write to other proxy")?;
 
             Ok(())
         } else {
             Err("wrong transfer chunk encoding")
         }
     }
-    fn set_parsing_state(&mut self, parsing_state: ParsingState)->Result<(),&str> {
+    fn set_parsing_state(&mut self, parsing_state: ParsingState) -> Result<(), &str> {
         match parsing_state {
-            ParsingState::FrontSeparateBody => {}
-            ParsingState::FirstLine => {}
-            ParsingState::Headers => {}
             ParsingState::BodyContentLength => {
                 write_proxied_request_line(
                     self.remote_host_stream,
                     &self.request_line,
                     self.remote_host_name,
                 )
-                .map_err(|_|"failed to write to other proxy")?;
-                write_proxied_headers(self.remote_host_stream, &self.headers).map_err(|_|"failed to write to ohter proxy")?;
+                .map_err(|_| "failed to write to other proxy")?;
+                write_proxied_headers(self.remote_host_stream, &self.headers)
+                    .map_err(|_| "failed to write to ohter proxy")?;
             }
             ParsingState::BodyChunked => {
                 write_proxied_request_line(
@@ -117,50 +116,50 @@ impl<'a> HttpMessage for ProxyRequestParser<'a> {
                     &self.request_line,
                     "httpbin.org",
                 )
-                .map_err(|_|"failed to write to other proxy")?;
-                write_proxied_headers(self.remote_host_stream, &self.headers).map_err(|_|"failed to write to ohter proxy")?;
+                .map_err(|_| "failed to write to other proxy")?;
+                write_proxied_headers(self.remote_host_stream, &self.headers)
+                    .map_err(|_| "failed to write to ohter proxy")?;
             }
-            ParsingState::Done => {
-                self.remote_host_stream.write_all(b"0\r\n\r\n").map_err(|_|"failed to write to other proxy")?;
+            ParsingState::BodyDone => {
+                self.remote_host_stream
+                    .write_all(b"0\r\n\r\n")
+                    .map_err(|_| "failed to write to other proxy")?;
             }
+            ParsingState::TrailerHeadersDone => {
+                write_proxied_headers(self.remote_host_stream, &self.trailer_headers).map_err(|_| "failed to write to ohter proxy")?;
+            },
+            _=>{}
         };
         self.parsing_state = parsing_state;
         Ok(())
     }
-    fn add_to_body(&mut self)->Result<(),&str> {
+    fn add_to_body(&mut self) -> Result<(), &str> {
         self.remote_host_stream
             .write_all(&self.data[self.body_cursor..])
-            .map_err(|_|"failed to write to ohter proxy")?;
+            .map_err(|_| "failed to write to ohter proxy")?;
         self.body.extend_from_slice(&self.data[self.body_cursor..]);
         Ok(())
     }
-    fn set_bytes_to_retrieve(&mut self,bytes_size:usize) {
-        self.bytes_to_retrieve=bytes_size;
+    fn set_bytes_to_retrieve(&mut self, bytes_size: usize) {
+        self.bytes_to_retrieve = bytes_size;
     }
-    
+
     fn set_body_chunk_part(&mut self) {
         self.body_chunk_part = !self.body_chunk_part;
     }
-    
-    
-    
-    
+
     fn current_part(&self) -> &[u8] {
         &self.data[self.current_position..]
     }
-    
-    
-    
+
     fn set_current_position(&mut self, index: usize) {
-        self.current_position+=index;
+        self.current_position += index;
     }
-    
+
     fn set_body_cursor(&mut self, index: usize) {
-        self.body_cursor+=index;
+        self.body_cursor += index;
     }
-    
-    
-    
+
     fn set_headers(&mut self, key: String, value: String) {
         self.headers
             .entry(key)
@@ -169,49 +168,50 @@ impl<'a> HttpMessage for ProxyRequestParser<'a> {
                 existing.push_str(&value);
             })
             .or_insert(value);
-        
     }
-    
-    
-    
-    fn add_to_data(&mut self,buf:&[u8]) {
+
+    fn set_trailer_headers(&mut self, key: String, value: String) {
+        self.trailer_headers
+            .entry(key)
+            .and_modify(|existing| {
+                existing.push(','); // HTTP header values separated by comma-space
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+    }
+
+    fn add_to_data(&mut self, buf: &[u8]) {
         self.data.extend_from_slice(buf);
     }
-    
-    
-    
-    
-    fn body_len(&self)->usize {
-        self.data.len()-self.body_cursor
-    }
-    
-    
-    fn free_parsed_data(&mut self){
-        self.current_position=0;
 
+    fn body_len(&self) -> usize {
+        self.data.len() - self.body_cursor
     }
-    
-    
+
+    fn free_parsed_data(&mut self) {
+        self.current_position = 0;
+    }
+
     fn headers(&self) -> &HashMap<String, String> {
         &self.headers
     }
-    
+
     fn body_chunk_part(&self) -> bool {
         self.body_chunk_part
     }
-    
+
     fn body_cursor(&self) -> usize {
         self.body_cursor
     }
-    
+
     fn current_position(&self) -> usize {
         self.current_position
     }
-    
+
     fn parsing_state(&self) -> &ParsingState {
         &self.parsing_state
     }
-    fn header(&self,key:&str)->Option<&String> {
+    fn header(&self, key: &str) -> Option<&String> {
         self.headers.get(key)
     }
 

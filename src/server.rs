@@ -116,7 +116,7 @@ fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
 pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
     HashMap::from([
         ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-        ("Connection", "close"),
+        ("Connection", "keep-alive"),
     ])
 }
 

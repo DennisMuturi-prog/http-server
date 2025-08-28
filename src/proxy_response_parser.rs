@@ -13,6 +13,7 @@ use crate::{
 pub struct ProxyResponseParser<'a> {
     response_line: ResponseLine,
     headers: HashMap<String, String>,
+    trailer_headers: HashMap<String, String>,
     body: Vec<u8>,
     body_chunk_part: bool,
     bytes_to_retrieve: usize,
@@ -27,6 +28,7 @@ impl<'a> ProxyResponseParser<'a> {
         ProxyResponseParser {
             response_line: ResponseLine::default(),
             headers: HashMap::new(),
+            trailer_headers: HashMap::new(),
             body: Vec::new(),
             body_chunk_part: false,
             bytes_to_retrieve: 0,
@@ -98,9 +100,6 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
     }
     fn set_parsing_state(&mut self, parsing_state: ParsingState)->Result<(),&str> {
         match parsing_state {
-            ParsingState::FrontSeparateBody => {}
-            ParsingState::FirstLine => {},
-            ParsingState::Headers => {}
             ParsingState::BodyContentLength => {
                 write_proxied_response_status_line(self.client_stream, &self.response_line).unwrap();
                 write_proxied_headers(
@@ -118,9 +117,13 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
                 )
                 .map_err(|_|"failed to write to other proxy")?;
             }
-            ParsingState::Done => {
+            ParsingState::BodyDone => {
                 self.client_stream.write_all(b"0\r\n\r\n").map_err(|_|"failed to write to other proxy")?;
             }
+            ParsingState::TrailerHeadersDone => {
+                write_proxied_headers(self.client_stream, &self.trailer_headers).map_err(|_| "failed to write to ohter proxy")?;
+            },
+            _=>{}
         };
         self.parsing_state = parsing_state;
         Ok(())
@@ -154,6 +157,17 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
     
     fn set_headers(&mut self, key: String, value: String) {
         self.headers
+            .entry(key)
+            .and_modify(|existing| {
+                existing.push(','); // HTTP header values separated by comma-space
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+        
+    }
+
+    fn set_trailer_headers(&mut self, key: String, value: String) {
+        self.trailer_headers
             .entry(key)
             .and_modify(|existing| {
                 existing.push(','); // HTTP header values separated by comma-space

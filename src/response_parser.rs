@@ -28,6 +28,7 @@ impl ResponseLine {
 pub struct ResponseParser{
     response_line: ResponseLine,
     headers: HashMap<String, String>,
+    trailer_headers: HashMap<String, String>,
     body: Vec<u8>,
     body_chunk_part: bool,
     bytes_to_retrieve: usize,
@@ -38,7 +39,7 @@ pub struct ResponseParser{
 }
 impl Default for ResponseParser{
     fn default()->Self{
-        Self { response_line: ResponseLine::default(), headers: HashMap::new(), body: Vec::new(), body_chunk_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),parsing_state:ParsingState::FrontSeparateBody}
+        Self { response_line: ResponseLine::default(), headers: HashMap::new(),trailer_headers: HashMap::new(), body: Vec::new(), body_chunk_part: false, bytes_to_retrieve: 0, body_cursor: 0, current_position: 0, data: Vec::with_capacity(1024),parsing_state:ParsingState::FrontSeparateBody}
     }
 }
 #[derive(Debug)]
@@ -123,6 +124,18 @@ impl HttpMessage for ResponseParser{
     
     fn set_headers(&mut self, key: String, value: String) {
         self.headers
+            .entry(key)
+            .and_modify(|existing| {
+                existing.push(','); // HTTP header values separated by comma-space
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+        
+    }
+
+
+    fn set_trailer_headers(&mut self, key: String, value: String) {
+        self.trailer_headers
             .entry(key)
             .and_modify(|existing| {
                 existing.push(','); // HTTP header values separated by comma-space
