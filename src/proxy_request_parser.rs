@@ -122,12 +122,15 @@ impl<'a> HttpMessage for ProxyRequestParser<'a> {
             }
             ParsingState::BodyDone => {
                 self.remote_host_stream
-                    .write_all(b"0\r\n\r\n")
+                    .write_all(b"0\r\n")
                     .map_err(|_| "failed to write to other proxy")?;
             }
             ParsingState::TrailerHeadersDone => {
                 write_proxied_headers(self.remote_host_stream, &self.trailer_headers).map_err(|_| "failed to write to ohter proxy")?;
             },
+            ParsingState::ParsingDone=>{
+                self.remote_host_stream.write_all(b"\r\n").map_err(|_|"failed to write to other proxy")?;
+            }
             _=>{}
         };
         self.parsing_state = parsing_state;

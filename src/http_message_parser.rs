@@ -22,6 +22,7 @@ pub enum ParsingState {
     TrailerHeaders,
     TrailerHeadersDone,
     BodyDone,
+    ParsingDone,
 }
 
 pub struct NotEnoughBytes;
@@ -33,8 +34,6 @@ pub enum HeaderParseError {
     NotEnoughBytes,
 }
 
-
-
 pub enum FirstLineParseError {
     FirstLinePartsMissing,
     OtherError,
@@ -42,27 +41,24 @@ pub enum FirstLineParseError {
     InvalidHttpMethod,
 }
 
-pub enum GeneralError {
-    UnrecoverableError,
-    NotEnoughBytes,
-}
 pub trait HttpMessage {
     type HttpType;
     fn http_message_from_reader(
         &mut self,
         stream: &mut TcpStream,
     ) -> Result<Self::HttpType, String> {
-        println!("starting");
         let mut buf = [0; 1024];
         let mut n = stream
             .read(&mut buf)
-            .map_err(|_| "error reading stream".to_string())?;
-        if n==0{
+            .map_err(|err| {
+                println!("error in reading {}",err);
+                "error reading stream".to_string()})?;
+        if n == 0 {
             return Err("false alarm".to_string());
         }
+
         self.add_to_data(&buf[..n]);
         loop {
-            println!("trying");
             match self.parsing_state() {
                 ParsingState::FrontSeparateBody => {
                     match self.parse_front() {
@@ -73,7 +69,6 @@ pub trait HttpMessage {
                             n = stream
                                 .read(&mut buf)
                                 .map_err(|_| "error reading stream".to_string())?;
-                            println!("trying  fetching again with n:{}",n);
                             self.add_to_data(&buf[..n]);
                         }
                     };
@@ -106,7 +101,6 @@ pub trait HttpMessage {
                         Ok(_) => {}
                         Err(err) => match err {
                             HeaderParseError::HeadersDone => {
-                                println!("headers:{:?}",self.headers());
                                 let content_length = match self.header("content-length") {
                                     Some(content_len) => content_len,
                                     None => {
@@ -194,19 +188,16 @@ pub trait HttpMessage {
                                         .map_err(|_| "error reading stream".to_string())?;
                                     self.add_to_data(&buf[..n]);
                                 }
-                                ParseError::HeadersDone => {
-                                    match self.header("Trailer"){
-                                        Some(_) =>{
-                                            self.set_parsing_state(ParsingState::BodyDone)?;
-                                            self.set_parsing_state(ParsingState::TrailerHeaders)?;
-                                        },
-                                        None => {
-                                            self.set_parsing_state(ParsingState::BodyDone)?;
-                                            return Ok(self.create_parsed_http_payload());
-
-                                        },
+                                ParseError::HeadersDone => match self.header("Trailer") {
+                                    Some(_) => {
+                                        self.set_parsing_state(ParsingState::BodyDone)?;
+                                        self.set_parsing_state(ParsingState::TrailerHeaders)?;
                                     }
-                                }
+                                    None => {
+                                        self.set_parsing_state(ParsingState::ParsingDone)?;
+                                        return Ok(self.create_parsed_http_payload());
+                                    }
+                                },
                                 _ => return Ok(self.create_parsed_http_payload()),
                             },
                         }
@@ -215,31 +206,30 @@ pub trait HttpMessage {
                 ParsingState::BodyDone => {
                     return Ok(self.create_parsed_http_payload());
                 }
-                ParsingState::TrailerHeaders => {
-                    match self.parse_trailer_headers(){
-                        Ok(_) => {},
-                        Err(err) => {
-                            match err{
-                                HeaderParseError::HeadersDone => {
-                                    self.set_parsing_state(ParsingState::TrailerHeadersDone)?;
-                                },
-                                HeaderParseError::NotEnoughBytes => {
-                                    n = stream
-                                        .read(&mut buf)
-                                        .map_err(|_| "error reading stream".to_string())?;
-                                    self.add_to_data(&buf[..n]);
-                                }
+                ParsingState::TrailerHeaders => match self.parse_trailer_headers() {
+                    Ok(_) => {}
+                    Err(err) => match err {
+                        HeaderParseError::HeadersDone => {
+                            self.set_parsing_state(ParsingState::TrailerHeadersDone)?;
+                        }
+                        HeaderParseError::NotEnoughBytes => {
+                            n = stream
+                                .read(&mut buf)
+                                .map_err(|_| "error reading stream".to_string())?;
+                            self.add_to_data(&buf[..n]);
+                        }
 
-                                _ => {
-                                    return Err("an error writing to cursor occurred".to_string());
-                                },
-                            }
-                        },
-                    }
-                }
+                        _ => {
+                            return Err("an error writing to cursor occurred".to_string());
+                        }
+                    },
+                },
                 ParsingState::TrailerHeadersDone => {
                     return Ok(self.create_parsed_http_payload());
                 }
+                ParsingState::ParsingDone =>{
+                    return Ok(self.create_parsed_http_payload());
+                },
             }
         }
     }

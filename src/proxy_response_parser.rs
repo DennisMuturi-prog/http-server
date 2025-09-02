@@ -118,11 +118,14 @@ impl<'a> HttpMessage for ProxyResponseParser<'a> {
                 .map_err(|_|"failed to write to other proxy")?;
             }
             ParsingState::BodyDone => {
-                self.client_stream.write_all(b"0\r\n\r\n").map_err(|_|"failed to write to other proxy")?;
+                self.client_stream.write_all(b"0\r\n").map_err(|_|"failed to write to other proxy")?;
             }
             ParsingState::TrailerHeadersDone => {
                 write_proxied_headers(self.client_stream, &self.trailer_headers).map_err(|_| "failed to write to ohter proxy")?;
             },
+            ParsingState::ParsingDone=>{
+                self.client_stream.write_all(b"\r\n").map_err(|_|"failed to write to other proxy")?;
+            }
             _=>{}
         };
         self.parsing_state = parsing_state;

@@ -28,7 +28,7 @@ pub struct Headers<'a> {
 }
 
 impl<'a> Headers<'a> {
-    pub fn write_default_headers(self) -> IoResult<Body<'a>>{
+    pub fn write_default_headers(self,content_type:ContentType) -> IoResult<Body<'a>>{
         let headers=get_common_headers();
         let mut headers_response = String::new();
         for (key, value) in headers {
@@ -37,13 +37,14 @@ impl<'a> Headers<'a> {
             headers_response.push_str(value);
             headers_response.push_str("\r\n");
         }
+        self.connection.write_all(content_type.as_bytes())?;
         self.connection.write_all(headers_response.as_bytes())?;
         Ok(Body {
             connection: self.connection,
             transfer_encoding_header_written:false
         })
     }
-    pub fn write_headers(self,custom_headers:HashMap<&str,&str>)->IoResult<Body<'a>>{
+    pub fn write_headers(self,custom_headers:HashMap<&str,&str>,content_type:ContentType)->IoResult<Body<'a>>{
         let mut headers_response = String::new();
         let mut headers=get_common_headers();
         for (key, value) in custom_headers {
@@ -59,6 +60,7 @@ impl<'a> Headers<'a> {
             headers_response.push_str(value);
             headers_response.push_str("\r\n");
         }
+        self.connection.write_all(content_type.as_bytes())?;
         self.connection.write_all(headers_response.as_bytes())?;
         Ok(Body {
             connection: self.connection,
@@ -66,7 +68,7 @@ impl<'a> Headers<'a> {
         })
 
     }
-    pub fn write_headers_with_trailer_headers(self,custom_headers:HashMap<&str,&str>,trailer_headers_keys:Vec<&str>)->IoResult<ChunkedBodyWithTrailerHeaders<'a>>{
+    pub fn write_headers_with_trailer_headers(self,custom_headers:HashMap<&str,&str>,trailer_headers_keys:Vec<&str>,content_type:ContentType)->IoResult<ChunkedBodyWithTrailerHeaders<'a>>{
         let mut headers_response = String::new();
         let mut headers=get_common_headers();
         for (key, value) in custom_headers {
@@ -82,6 +84,7 @@ impl<'a> Headers<'a> {
             headers_response.push_str(value);
             headers_response.push_str("\r\n");
         }
+        self.connection.write_all(content_type.as_bytes())?;
         let trailer_headers=format!("Trailer: {}\r\nTransfer-Encoding: chunked\r\n\r\n",trailer_headers_keys.join(""));
         headers_response.push_str(&trailer_headers);
         self.connection.write_all(headers_response.as_bytes())?;
@@ -98,9 +101,7 @@ pub struct Body<'a> {
 
 impl<'a> Body<'a> {
     pub fn write_body_plain_text(self,body:&str)->IoResult<Response >{
-        //add capacity annotation#todo
         let mut body_bytes=Vec::<u8>::new();
-        body_bytes.extend_from_slice(b"Content-Type: text/plain\r\n");
         let content_length_header=format!("Content-Length: {}\r\n\r\n",body.len());
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
@@ -109,7 +110,6 @@ impl<'a> Body<'a> {
     }
     pub fn write_body_html(self,body:&str)->IoResult<Response>{
         let mut body_bytes=Vec::<u8>::new();
-        body_bytes.extend_from_slice(b"Content-Type: text/html\r\n");
         let content_length_header=format!("Content-Length: {}\r\n\r\n",body.len());
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
@@ -120,9 +120,8 @@ impl<'a> Body<'a> {
         self.connection.write_all(b"Content-Length: 0\r\n\r\n")?;
         Ok(Response{})
     }
-    pub fn write_chunk(&mut self,chunk:&[u8],content_type:ContentType)->IoResult<()>{
+    pub fn write_chunk(&mut self,chunk:&[u8])->IoResult<()>{
         if !self.transfer_encoding_header_written{
-            self.connection.write_all(content_type.as_bytes())?;
             self.connection.write_all(b"Transfer-Encoding: chunked\r\n\r\n")?;
             self.transfer_encoding_header_written=true;
         }
@@ -154,10 +153,10 @@ pub enum ContentType{
 impl ContentType {
     fn as_bytes(&self) -> &[u8] {
         match self {
-            ContentType::ApplicationJson => b"Content-Type: application/json\r\n",
+            ContentType::ApplicationJson => b"Content-Type: application/json; charset=utf-8\r\n",
             ContentType::ImageJpeg => b"Content-Type: image/jpeg\r\n",
-            ContentType::TextHtml => b"Content-Type: text/html\r\n",
-            ContentType::TextPlain => b"Content-Type: text/plain\r\n",
+            ContentType::TextHtml => b"Content-Type: text/html; charset=utf-8\r\n",
+            ContentType::TextPlain => b"Content-Type: text/plain; charset=utf-8\r\n",
         }
     }
 }
@@ -170,11 +169,11 @@ impl<'a> ChunkedBodyWithTrailerHeaders<'a> {
         Ok(())
     }
     pub fn write_chunked_body_done(&mut self)->IoResult<()>{
-        self.connection.write_all(b"0\r\n\r\n")?;
+        self.connection.write_all(b"0\r\n")?;
         Ok(())
     }
     pub fn write_trailer_headers(self,trailer_headers:HashMap<&str,&str>)->IoResult<Response>{
-        let mut headers_response = String::new();        
+        let mut headers_response = String::new();       
         for (key, value) in trailer_headers {
             headers_response.push_str(key);
             headers_response.push_str(": ");

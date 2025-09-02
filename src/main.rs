@@ -1,10 +1,10 @@
-use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}};
+use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
 use single_threaded_server::{request_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
-    let server = Server::serve(8000, handler)?;
+    let server = Server::serve(8000, 10,handler)?;
     server.listen();
     Ok(())
 }
@@ -28,23 +28,32 @@ fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Respon
         let response_message = "Your problem is not my problem\n";
         response_writer
             .write_status_line(StatusCode::BadRequest)?
-            .write_default_headers()?
+            .write_default_headers(ContentType::TextPlain)?
             .write_body_plain_text(response_message)
-    } else if request_path == "/myproblem" {
+    } 
+    else if request_path == "/myproblem" {
         let response_message = "Woopsie, my bad\n";
         response_writer
             .write_status_line(StatusCode::InternalServerError)?
-            .write_default_headers()?
+            .write_default_headers(ContentType::TextPlain)?
             .write_body_plain_text(response_message)
-    } else {
-        let response_message = "<h1>Hello world</h1><a href=\"/favicon.ico\" download>Download image</a>";
+    } 
+    else if request_path == "/sleep" {
+        sleep(time::Duration::from_secs(20));
+        let response_message = "What a nap 😴🥱\n";
+        response_writer
+            .write_status_line(StatusCode::InternalServerError)?
+            .write_default_headers(ContentType::TextPlain)?
+            .write_body_plain_text(response_message)
+    }else {
+        let response_message = "<h1>Hello world 👀</h1><a href=\"/favicon.ico\" download>Download image</a>";
         let custom_headers = HashMap::from([
             ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
             ("Connection", "alive"),
         ]);
         response_writer
             .write_status_line(StatusCode::Ok)?
-            .write_headers(custom_headers)?
+            .write_headers(custom_headers,ContentType::TextHtml)?
             .write_body_html(response_message)
     }
 }
@@ -53,7 +62,7 @@ fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Respon
 fn send_image_in_chunks(response_writer: ResponseWriter)->IoResult<Response>{
     let mut buf=[0;1024];
     let mut file=File::open("muturi.jpg")?;
-    let mut response_writer=response_writer.write_status_line(StatusCode::Ok)?.write_default_headers()?;
+    let mut response_writer=response_writer.write_status_line(StatusCode::Ok)?.write_default_headers(ContentType::ImageJpeg)?;
 
 
     loop{
@@ -61,7 +70,7 @@ fn send_image_in_chunks(response_writer: ResponseWriter)->IoResult<Response>{
         if n==0{
             return response_writer.write_chunked_body_done();
         }
-        response_writer.write_chunk(&buf[..n],ContentType::ImageJpeg)?;
+        response_writer.write_chunk(&buf[..n])?;
     }
 
 }
