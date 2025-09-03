@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::{Result as IoResult, Write},
     net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
-    sync::{Arc},
+    sync::Arc,
 };
 
 use crate::{

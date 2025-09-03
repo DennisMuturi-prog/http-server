@@ -1,5 +1,5 @@
 use std::{
-    io::{Result as IoResult},
+    io::Result as IoResult,
     net::TcpStream,
     sync::{
         Arc, Mutex,
@@ -17,50 +17,70 @@ use crate::{
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 pub struct TaskManager {
-    tramsmitter: Sender<Job>,
-    tasks: Vec<Task>,
+    tramsmitter: Option<Sender<Job>>,
+    workers: Vec<Worker>,
 }
 
 impl TaskManager {
     pub fn new(no_of_threads: usize) -> Self {
         let (tramsmitter, receiver) = mpsc::channel::<Job>();
         let receiver = Arc::new(Mutex::new(receiver));
-        let mut tasks = Vec::with_capacity(no_of_threads);
+        let mut workers = Vec::with_capacity(no_of_threads);
         for id in 0..no_of_threads {
-            tasks.push(Task::new(id,receiver.clone()));
+            workers.push(Worker::new(id, receiver.clone()));
         }
 
-        Self { tasks, tramsmitter }
+        Self {
+            workers,
+            tramsmitter: Some(tramsmitter),
+        }
     }
     pub fn execute<F>(&self, function_to_execute: F)
     where
         F: FnOnce() + Send + 'static,
     {
-        let job=Box::new(function_to_execute);
-        self.tramsmitter.send(job).unwrap();
+        let job = Box::new(function_to_execute);
+        self.tramsmitter.as_ref().unwrap().send(job).unwrap();
+    }
+}
+impl Drop for TaskManager {
+    fn drop(&mut self) {
+        drop(self.tramsmitter.take());
+        for worker in self.workers.drain(..) {
+            worker.task_handle.join().unwrap();
+            println!("shut down worker thread :{}", worker.id);
+        }
     }
 }
 
-struct Task {
-    id:usize,
+struct Worker {
+    id: usize,
     task_handle: JoinHandle<()>,
 }
-impl Task {
-    pub fn new(id:usize,receiver: Arc<Mutex<Receiver<Job>>>) -> Self{
-    
+impl Worker {
+    fn new(id: usize, receiver: Arc<Mutex<Receiver<Job>>>) -> Self {
         let task_handle = thread::spawn(move || {
             loop {
-                let job = receiver.lock().unwrap().recv().unwrap();
-                job();
-                println!("served by thread {}",id);
+                match receiver.lock().unwrap().recv() {
+                    Ok(job) => {
+                        job();
+                        println!("served by thread {}", id);
+                    }
+                    Err(_) => {
+                        println!("ending thread{id}");
+                        break;
+                    },
+                }
             }
         });
-        Self {id, task_handle }
+        Self { id, task_handle }
     }
 }
 
-pub fn handle<F>(mut connection: TcpStream,custom_handler:Arc<F>) -> IoResult<()> 
-where F: Fn(ResponseWriter, Request) -> IoResult<Response>{
+pub fn handle<F>(mut connection: TcpStream, custom_handler: Arc<F>) -> IoResult<()>
+where
+    F: Fn(ResponseWriter, Request) -> IoResult<Response>,
+{
     let mut request_parser = RequestParser::default();
     match request_parser.http_message_from_reader(&mut connection) {
         Ok(request) => {
@@ -88,4 +108,3 @@ where F: Fn(ResponseWriter, Request) -> IoResult<Response>{
         }
     }
 }
-
