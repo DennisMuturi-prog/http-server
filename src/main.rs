@@ -10,7 +10,7 @@ fn main() -> IoResult<()> {
 }
 
 fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Response> {
-    println!("request:{:?}",request.headers());
+    println!("request:{:?}",request.request_path());
     let request_path = request.request_path();
     let content_type_header=match request.header("content-type"){
         Some(accept) => accept,
