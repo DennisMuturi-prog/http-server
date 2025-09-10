@@ -9,3 +9,4 @@ pub mod request_parser;
 pub mod proxy_response_parser;
 pub mod proxy_request_parser;
 pub mod task_manager;
+pub mod new_http_message_parser;

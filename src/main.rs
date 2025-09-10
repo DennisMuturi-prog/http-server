@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
-use single_threaded_server::{request_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
+use single_threaded_server::{new_http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
@@ -49,7 +49,7 @@ fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Respon
         let response_message = "<h1>Hello world 👀</h1><a href=\"/favicon.ico\" download>Download image</a>";
         let custom_headers = HashMap::from([
             ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-            ("Connection", "alive"),
+            ("Connection", "keep-alive"),
         ]);
         response_writer
             .write_status_line(StatusCode::Ok)?

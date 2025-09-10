@@ -9,10 +9,7 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::HttpMessage,
-    request_parser::{Request, RequestParser},
-    response_writer::{ContentType, Response, ResponseWriter},
-    server::{StatusCode, get_preflight_headers, write_headers, write_status_line},
+    new_http_message_parser::{FirstLineRequestParser, Parser, Request}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}
 };
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
@@ -61,16 +58,19 @@ impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<Receiver<Job>>>) -> Self {
         let task_handle = thread::spawn(move || {
             loop {
-                match receiver.lock().unwrap().recv() {
-                    Ok(job) => {
-                        job();
-                        println!("served by thread {}", id);
+                let job = {
+                    match receiver.lock().unwrap().recv() {
+                        Ok(job) => job,
+                        Err(_) => {
+                            println!("ending thread{id}");
+                            break;
+                        },
                     }
-                    Err(_) => {
-                        println!("ending thread{id}");
-                        break;
-                    },
-                }
+                }; // Lock is released here!
+                
+                // Now execute the job without holding the lock
+                job();
+                println!("served by thread {}", id);
             }
         });
         Self { id, task_handle }
@@ -81,9 +81,11 @@ pub fn handle<F>(mut connection: TcpStream, custom_handler: Arc<F>) -> IoResult<
 where
     F: Fn(ResponseWriter, Request) -> IoResult<Response>,
 {
-    let mut request_parser = RequestParser::default();
-    match request_parser.http_message_from_reader(&mut connection) {
-        Ok(request) => {
+    let first_line_request_parser=FirstLineRequestParser::default();
+    let mut request_parser = Parser::new(first_line_request_parser);
+    match request_parser.parse(&mut connection) {
+        Ok(_) => {
+            let request=request_parser.create_request_payload();
             if request.request_method() == "OPTIONS" {
                 write_status_line(&mut connection, StatusCode::Ok)?;
                 let headers = get_preflight_headers();
@@ -108,3 +110,5 @@ where
         }
     }
 }
+
+

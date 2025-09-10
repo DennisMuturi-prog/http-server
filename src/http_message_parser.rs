@@ -346,7 +346,7 @@ pub trait HttpMessage {
     fn body_chunk_part(&self) -> bool;
 }
 
-fn parse_headers(header_field: &str) -> Result<(String, String), HeaderParseError> {
+pub fn parse_headers(header_field: &str) -> Result<(String, String), HeaderParseError> {
     let broken_parts: Vec<_> = header_field.split(':').collect();
 
     let key = broken_parts.first().ok_or(HeaderParseError::InvalidHeader(

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{Cursor, Read, Write},
+    io::{Cursor, Read, Result as IoResult, Write},
     net::TcpStream,
 };
 
@@ -8,7 +8,7 @@ use crate::{
     http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
     old_response_parser::find_field_line_index,
     request_parser::{parse_request_line, Request, RequestLine},
-    server::{ write_proxied_headers, write_proxied_request_line},
+    server::{ write_proxied_headers},
 };
 
 pub struct ProxyRequestParser<'a> {
@@ -221,4 +221,21 @@ impl<'a> HttpMessage for ProxyRequestParser<'a> {
     fn data(&self) -> &[u8] {
         &self.data
     }
+}
+
+
+
+pub fn write_proxied_request_line<T: Write>(
+    stream_writer: &mut T,
+    request: &RequestLine,
+    remote_host: &str,
+) -> IoResult<()> {
+    let status_line = format!(
+        "{} {} HTTP/1.1\r\nHost: {}\r\n",
+        request.method(),
+        request.request_target(),
+        remote_host
+    );
+    stream_writer.write_all(status_line.as_bytes())?;
+    Ok(())
 }

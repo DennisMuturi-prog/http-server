@@ -7,82 +7,44 @@ use std::{
 
 use crate::{
     http_message_parser::HttpMessage,
+    new_http_message_parser::{Request},
     proxy_request_parser::ProxyRequestParser,
     proxy_response_parser::ProxyResponseParser,
-    request_parser::{Request, RequestLine, RequestParser},
     response_parser::ResponseLine,
-    response_writer::{ContentType, Response, ResponseWriter},
-    task_manager::{ handle, TaskManager},
+    response_writer::{ Response, ResponseWriter},
+    task_manager::{handle, TaskManager},
 };
 
 pub struct Server<F> {
     listener: TcpListener,
     handler: F,
-    no_of_threads:usize
+    no_of_threads: usize,
 }
 
 impl<F> Server<F>
 where
-    F: Fn(ResponseWriter, Request)-> IoResult<Response> + Send + 'static + Sync
+    F: Fn(ResponseWriter, Request) -> IoResult<Response> + Send + 'static + Sync,
 {
-    pub fn serve(port: u16,no_of_threads:usize, handler: F) -> IoResult<Self> {
+    pub fn serve(port: u16, no_of_threads: usize, handler: F) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
-        Ok(Server { listener, handler,no_of_threads })
+        Ok(Server {
+            listener,
+            handler,
+            no_of_threads,
+        })
     }
-    fn handle(&self, mut connection: TcpStream) -> IoResult<()> {
-        let mut request_parser = RequestParser::default();
-        match request_parser.http_message_from_reader(&mut connection) {
-            Ok(request) => {
-                if request.request_method() == "OPTIONS" {
-                    write_status_line(&mut connection, StatusCode::Ok)?;
-                    let headers = get_preflight_headers();
-                    write_headers(&mut connection, headers)?;
-                    return Ok(());
-                }
-                let handler = &self.handler;
-                let response_writer = ResponseWriter::new(&mut connection);
-                handler(response_writer, request)?;
-                Ok(())
-            }
-            Err(err) => {
-                if err == "false alarm" {
-                    connection.shutdown(std::net::Shutdown::Both)?;
-                    return Ok(());
-                }
-                let response_writer = ResponseWriter::new(&mut connection);
-                response_writer
-                    .write_status_line(StatusCode::BadRequest)?
-                    .write_default_headers(ContentType::TextPlain)?
-                    .write_body_plain_text(&err)?;
-                Ok(())
-            }
-        }
-    }
-    pub fn blocking_listen(&self) {
-        for stream in self.listener.incoming() {
-            println!("new");
-            let stream = match stream {
-                Ok(my_stream) => my_stream,
-                Err(_) => continue,
-            };
-            if let Err(err) = self.handle(stream) {
-                println!("error occurred handling,{err}");
-            }
-        }
-    }
-
     pub fn listen(self) {
         let task_manager = TaskManager::new(self.no_of_threads);
-        let handler = Arc::new(self.handler); 
+        let handler = Arc::new(self.handler);
         for stream in self.listener.incoming() {
             println!("new");
             let stream = match stream {
                 Ok(my_stream) => my_stream,
                 Err(_) => continue,
             };
-            let custom_handler=handler.clone();
+            let custom_handler = handler.clone();
             task_manager.execute(|| {
-                if let Err(err) = handle(stream,custom_handler) {
+                if let Err(err) = handle(stream, custom_handler) {
                     println!("error occurred handling,{err}");
                 }
             });
@@ -119,20 +81,7 @@ pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) ->
     Ok(())
 }
 
-pub fn write_proxied_request_line<T: Write>(
-    stream_writer: &mut T,
-    request: &RequestLine,
-    remote_host: &str,
-) -> IoResult<()> {
-    let status_line = format!(
-        "{} {} HTTP/1.1\r\nHost: {}\r\n",
-        request.method(),
-        request.request_target(),
-        remote_host
-    );
-    stream_writer.write_all(status_line.as_bytes())?;
-    Ok(())
-}
+
 
 pub fn write_proxied_response_status_line<T: Write>(
     stream_writer: &mut T,
