@@ -7,7 +7,6 @@ use crate::{
     http_message_parser::{
         HeaderParseError, NotEnoughBytes, ParseError, ParsingState, parse_headers,
     },
-    old_response_parser::{find_field_line_index, find_payload_index},
 };
 
 pub enum FirstLineParseError {
@@ -578,12 +577,13 @@ impl Response {
     }
 }
 
+//todo remove clone later
+#[derive(Default,Clone)]
 pub struct RequestLine {
     http_version: String,
     request_target: String,
     method: String,
 }
-
 impl RequestLine {
     pub fn http_version(&self) -> &str {
         &self.http_version
@@ -599,9 +599,36 @@ impl RequestLine {
 }
 
 
-
+#[derive(Default,Clone)]
 pub struct ResponseLine {
     http_version: String,
     status_code: String,
     status_message: String,
+}
+impl ResponseLine {
+    pub fn status_code(&self)->&str{
+        &self.status_code
+    }
+    pub fn status_message(&self)->&str{
+        &self.status_message
+    }
+    
+    pub fn http_version(&self) -> &str {
+        &self.http_version
+    }
+    
+}
+
+pub fn find_field_line_index(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(2)
+        .position(|w| matches!(w, b"\r\n"))
+        .map(|ix| ix+2)
+}
+
+pub fn find_payload_index(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(4)
+        .position(|w| matches!(w, b"\r\n\r\n"))
+        .map(|ix| ix + 4)
 }

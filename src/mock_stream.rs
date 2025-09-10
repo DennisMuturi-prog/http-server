@@ -1,8 +1,22 @@
-use std::io::{Read,Result as IoResult};
+use std::io::{self, Read, Result as IoResult, Write};
 
 pub struct MockStream {
     data: String,
     pos: usize,
+    received_data:String
+}
+
+impl Write for MockStream{
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        let received_string=String::from_utf8(buf.to_vec()).map_err( io::Error::other)?;
+        self.received_data.push_str(&received_string);
+        Ok(buf.len())
+
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        todo!()
+    }
 }
 
 impl Read for MockStream {

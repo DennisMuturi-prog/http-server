@@ -7,10 +7,9 @@ use std::{
 
 use crate::{
     http_message_parser::HttpMessage,
-    new_http_message_parser::{Request},
+    new_http_message_parser::{Request, ResponseLine},
     proxy_request_parser::ProxyRequestParser,
     proxy_response_parser::ProxyResponseParser,
-    response_parser::ResponseLine,
     response_writer::{ Response, ResponseWriter},
     task_manager::{handle, TaskManager},
 };

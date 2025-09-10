@@ -5,10 +5,7 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState},
-    old_response_parser::find_field_line_index,
-    request_parser::{parse_request_line, Request, RequestLine},
-    server::{ write_proxied_headers},
+    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}, new_http_message_parser::{find_field_line_index, parse_request_line, Request, RequestLine}, server::write_proxied_headers
 };
 
 pub struct ProxyRequestParser<'a> {
