@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}, new_http_message_parser::{find_field_line_index, parse_response_line, Response, ResponseLine}, server::{ write_proxied_headers, write_proxied_response_status_line}
+    http_message_parser::{FirstLineParseError, HttpMessage, ParsingState}, parser::{first_line_parser::{parse_response_line, ResponseLine}, http_message_parser::{find_field_line_index, Response}}, proxy::write_proxied_headers, server::write_proxied_response_status_line
 };
 
 

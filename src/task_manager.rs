@@ -8,9 +8,9 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::{
-    new_http_message_parser::{FirstLineRequestParser, Parser, Request}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}
-};
+use crate::{parser::{chunked_body_parser::BodyParser, first_line_parser::FirstLineRequestParser, header_parser::HeaderParser, http_message_parser::{Parser, Request}}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}};
+
+
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 pub struct TaskManager {
@@ -82,7 +82,9 @@ where
     F: Fn(ResponseWriter, Request) -> IoResult<Response>,
 {
     let first_line_request_parser=FirstLineRequestParser::default();
-    let mut request_parser = Parser::new(first_line_request_parser);
+    let header_parser=HeaderParser::default();
+    let body_parser=BodyParser::default();
+    let mut request_parser = Parser::new(first_line_request_parser,header_parser,body_parser);
     match request_parser.parse(&mut connection) {
         Ok(_) => {
             let request=request_parser.create_request_payload();

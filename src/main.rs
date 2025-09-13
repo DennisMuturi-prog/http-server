@@ -1,11 +1,11 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
-use single_threaded_server::{new_http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
+use single_threaded_server::{parser::http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
     let server = Server::serve(8000, 10,handler)?;
-    server.listen();
+    server.proxy_listen();
     Ok(())
 }
 
