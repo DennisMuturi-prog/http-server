@@ -168,15 +168,15 @@ pub struct RequestLineRef <'a>{
 }
 impl<'a> RequestLineRef<'a> {
     pub fn http_version(&self) -> &str {
-        &self.http_version
+        self.http_version
     }
 
     pub fn request_target(&self) -> &str {
-        &self.request_target
+        self.request_target
     }
 
     pub fn method(&self) -> &str {
-        &self.method
+        self.method
     }
     
 }
@@ -212,14 +212,14 @@ pub struct ResponseLineRef<'a> {
 
 impl<'a> ResponseLineRef<'a> {
     pub fn status_code(&self)->&str{
-        &self.status_code
+        self.status_code
     }
     pub fn status_message(&self)->&str{
-        &self.status_message
+        self.status_message
     }
     
     pub fn http_version(&self) -> &str {
-        &self.http_version
+        self.http_version
     }
     
 }

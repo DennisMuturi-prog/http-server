@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    http_message_parser::HttpMessage, parser::{chunked_body_parser::BodyParser, first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, header_parser::HeaderParser, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, proxy_request_parser::ProxyRequestParser, proxy_response_parser::ProxyResponseParser, response_writer::{ Response, ResponseWriter}, task_manager::{handle, TaskManager}
+    parser::{chunked_body_parser::BodyParser, first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, header_parser::HeaderParser, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, task_manager::{handle, TaskManager}
 };
 
 pub struct Server<F> {
@@ -51,7 +51,7 @@ where
                 Ok(my_stream) => my_stream,
                 Err(_) => continue,
             };
-            if let Err(err) = proxy_to_remote_2(stream) {
+            if let Err(err) = proxy_to_remote(stream) {
                 println!("error occurred handling,{err}");
             }
         }
@@ -125,24 +125,9 @@ pub fn write_headers<T: Write>(
 }
 
 
-fn proxy_to_remote(mut client_stream: TcpStream) -> IoResult<()> {
-    let host = "httpbin.org:80";
-    let ip_lookup = host.to_socket_addrs()?.next().unwrap();
-    let mut connection = TcpStream::connect(ip_lookup).unwrap();
-    let mut request_parser = ProxyRequestParser::new(&mut connection, "httpbin.org");
-    request_parser
-        .http_message_from_reader(&mut client_stream)
-        .unwrap();
-    let mut response_parser = ProxyResponseParser::new(&mut client_stream);
-    let response = response_parser
-        .http_message_from_reader(&mut connection)
-        .unwrap();
-    let parsed_body = String::from_utf8(response.body().to_vec()).unwrap();
-    println!("response is \n{}", parsed_body);
-    Ok(())
-}
 
-fn proxy_to_remote_2(mut client_stream: TcpStream) -> IoResult<()> {
+
+fn proxy_to_remote(mut client_stream: TcpStream) -> IoResult<()> {
     let host = "httpbin.org:80";
     let ip_lookup = host.to_socket_addrs()?.next().unwrap();
     let mut connection = TcpStream::connect(ip_lookup).unwrap();

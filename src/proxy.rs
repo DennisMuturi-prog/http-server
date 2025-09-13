@@ -1,7 +1,7 @@
 use crate::parser::{
     chunked_body_parser::BodyParser,
     first_line_parser::{
-        ExtractFirstLine, FirstLineParseError, FirstLineParser, RequestLine, RequestLineRef, ResponseLine,
+        ExtractFirstLine, FirstLineParseError, FirstLineParser, RequestLine, ResponseLine
     },
     front_from_body_parser::parse_front,
     header_parser::{HeaderParseError, HeaderParser},
@@ -166,8 +166,6 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                                             match self.header_parser.header("transfer-encoding") {
                                                 Some(chunking) => chunking,
                                                 None => {
-                                                    self.parsing_state =
-                                                        ParsingState::BodyContentLength;
                                                     self.write_first_line_and_headers().map_err(
                                                         |_| "failed to write to ohter proxy 1",
                                                     )?;
@@ -178,8 +176,8 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                                             self.parsing_state = ParsingState::BodyChunked;
                                             self.write_first_line_and_headers()
                                                 .map_err(|_| "failed to write to ohter proxy 2")?;
+                                            self.remote_host_stream.write_all(&self.data[self.body_cursor..]).map_err(|_| "failed to write to ohter proxy 2")?;
                                         } else {
-                                            self.parsing_state = ParsingState::BodyContentLength;
                                             return Ok(());
                                         }
                                         continue;
@@ -191,6 +189,8 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                                 })?;
                                 self.parsing_state = ParsingState::BodyContentLength;
                                 if self.body_len() >= content_length {
+                                    self.write_first_line_and_headers()
+                                                .map_err(|_| "failed to write to ohter proxy 2")?;
                                     self.remote_host_stream
                                         .write_all(&self.data[self.body_cursor..])
                                         .map_err(|_| "failed to write to ohter proxy 3")?;
@@ -231,17 +231,6 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                         .parse_body(&self.data[self.current_position..])
                     {
                         Ok(offset) => {
-                            println!("offset is {offset} and len of data is {} and current position is {}",self.data.len(),self.current_position);
-                            self.remote_host_stream
-                                .write_all(
-                                    &self.data[self.current_position
-                                        ..self.current_position + offset],
-                                )
-                                .map_err(|err| {
-                                    println!("err is {err}");
-                                    
-                                    "failed to write to other proxy 5 {}"
-                                })?;
                             self.current_position += offset;
                         }
                         Err(err) => match err {
@@ -250,20 +239,13 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                                     .read(&mut buf)
                                     .map_err(|_| "error reading stream".to_string())?;
                                 self.add_to_data(&buf[..n]);
+                                self.remote_host_stream.write_all(&buf[..n]).map_err(|_| "failed to write to ohter proxy 2")?;
                             }
                             ParseError::HeadersDone => match self.header_parser.header("Trailer") {
                                 Some(_) => {
-                                    self.parsing_state = ParsingState::BodyDone;
-                                    self.remote_host_stream
-                                        .write_all(b"0\r\n")
-                                        .map_err(|_| "failed to write to other proxy")?;
                                     self.parsing_state = ParsingState::TrailerHeaders;
                                 }
                                 None => {
-                                    self.parsing_state = ParsingState::ParsingDone;
-                                    self.remote_host_stream
-                                        .write_all(b"\r\n")
-                                        .map_err(|_| "failed to write to other proxy")?;
                                     return Ok(());
                                 }
                             },
@@ -285,17 +267,13 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
                     Err(err) => match err {
                         HeaderParseError::HeadersDone => {
                             self.parsing_state = ParsingState::TrailerHeadersDone;
-                            write_proxied_headers(
-                                self.remote_host_stream,
-                                self.header_parser.get_headers_ref(),
-                            )
-                            .map_err(|_| "failed to write to ohter proxy")?;
                         }
                         HeaderParseError::NotEnoughBytes => {
                             n = stream
                                 .read(&mut buf)
                                 .map_err(|_| "error reading stream".to_string())?;
                             self.add_to_data(&buf[..n]);
+                            self.remote_host_stream.write_all(&buf[..n]).map_err(|_| "failed to write to ohter proxy 2")?;
                         }
                         _ => {
                             return Err("an error writing to cursor occurred".to_string());
@@ -322,10 +300,6 @@ impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpTyp
         self.proxy_headers_sender.send_first_line_and_headers(
             self.remote_host_stream,
             self.first_line_parser.get_first_line_ref(),
-            self.header_parser.get_headers_ref(),
-        )?;
-        write_proxied_headers(
-            self.remote_host_stream,
             self.header_parser.get_headers_ref(),
         )
     }

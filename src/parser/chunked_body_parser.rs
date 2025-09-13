@@ -41,7 +41,6 @@ impl BodyParser{
             .read_to_string(&mut body_chunk_size_str)
             .map_err(|_| ParseError::OtherError("error in reading string to cursor".to_string()))?;
 
-        println!("parsed string is {body_chunk_size_str}");
         let bytes_to_be_retrieved =
             usize::from_str_radix(&body_chunk_size_str, 16).map_err(|_| {
                 ParseError::OtherError("error in parsing from hexadecimal string".to_string())
@@ -60,15 +59,15 @@ impl BodyParser{
                 return Err(ParseError::NotEnoughBytes);
             }
         };
-        let mut body_chunk_size_str = String::new();
-        let mut cursor = Cursor::new(&data[..next_body_data_size_index - 2]);
+        // let mut body_chunk_size_str = String::new();
+        // let mut cursor = Cursor::new(&data[..next_body_data_size_index - 2]);
 
-        cursor
-            .read_to_string(&mut body_chunk_size_str)
-            .map_err(|_| ParseError::OtherError("error in reading string to cursor".to_string()))?;
+        // cursor
+        //     .read_to_string(&mut body_chunk_size_str)
+        //     .map_err(|_| ParseError::OtherError("error in reading string to cursor".to_string()))?;
 
-        println!("parsed string is {body_chunk_size_str}");
-        println!("parsed index is {next_body_data_size_index}");
+        // println!("parsed string is \n {body_chunk_size_str}");
+        // println!("parsed index is {next_body_data_size_index}");
 
         self.add_chunk_to_body(data)
             .map_err(|err| ParseError::OtherError(err.to_owned()))?;

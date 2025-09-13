@@ -1,9 +1,6 @@
 pub mod mock_stream;
 pub mod server;
 pub mod response_writer;
-pub mod http_message_parser;
-pub mod proxy_response_parser;
-pub mod proxy_request_parser;
 pub mod task_manager;
 pub mod headers_parser;
 pub mod parser;
