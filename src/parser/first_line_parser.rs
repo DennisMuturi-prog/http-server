@@ -2,39 +2,6 @@ use std::io::{Cursor, Read};
 
 use crate::parser::http_message_parser::find_field_line_index;
 
-
-
-
-pub trait ExtractFirstLine {
-    type HttpType;
-    fn get_first_line_ref(& self) -> Self::HttpType;
-}
-
-impl ExtractFirstLine for FirstLineRequestParser {
-    type HttpType = RequestLine;
-    
-    fn get_first_line_ref(& self) -> Self::HttpType {
-        RequestLine {
-            http_version: self.http_version.to_string(),
-            method: self.method.to_string(),
-            request_target: self.request_target.to_string(),
-        }
-    }
-}
-
-impl ExtractFirstLine for FirstLineResponseParser {
-    type HttpType = ResponseLine;
-    
-    fn get_first_line_ref(&self) -> Self::HttpType {
-        ResponseLine{
-            http_version: self.http_version.to_string(),
-            status_code: self.status_code.to_string(),
-            status_message: self.status_message.to_string(),
-        }
-    }
-}
-
-
 pub enum FirstLineParseError {
     FirstLinePartsMissing,
     CursorError,
@@ -42,7 +9,10 @@ pub enum FirstLineParseError {
     InvalidHttpMethod,
 }
 pub trait FirstLineParser{
+    type HttpType;
     fn parse_first_line(&mut self, data: &[u8]) -> Result<usize, FirstLineParseError>;
+    fn get_first_line(self) -> Self::HttpType;
+    fn get_first_line_ref(& self) -> Self::HttpType;
 }
 #[derive(Default)]
 pub struct FirstLineRequestParser {
@@ -51,6 +21,7 @@ pub struct FirstLineRequestParser {
     method: String,
 }
 impl FirstLineParser for FirstLineRequestParser {
+    type HttpType = RequestLine;
     fn parse_first_line(&mut self, data: &[u8]) -> Result<usize, FirstLineParseError> {
         let next_field_line_index = find_field_line_index(data).unwrap_or(0);
         let mut cursor = Cursor::new(&data[..next_field_line_index - 2]);
@@ -62,6 +33,20 @@ impl FirstLineParser for FirstLineRequestParser {
         self.set(parsed_line);
         Ok(next_field_line_index)
     }
+    fn get_first_line(self) -> Self::HttpType{
+        RequestLine {
+            http_version: self.http_version,
+            request_target: self.request_target,
+            method: self.method,
+        }
+    }
+    fn get_first_line_ref(& self) -> Self::HttpType {
+        RequestLine {
+            http_version: self.http_version.to_string(),
+            method: self.method.to_string(),
+            request_target: self.request_target.to_string(),
+        }
+    }
     
 }
 impl FirstLineRequestParser {
@@ -69,13 +54,6 @@ impl FirstLineRequestParser {
         self.http_version = request_line.http_version;
         self.method = request_line.method;
         self.request_target = request_line.request_target;
-    }
-    pub fn get_first_line(self) -> RequestLine{
-        RequestLine {
-            http_version: self.http_version,
-            request_target: self.request_target,
-            method: self.method,
-        }
     }
 }
 
@@ -87,6 +65,7 @@ pub struct FirstLineResponseParser {
 }
 
 impl FirstLineParser for FirstLineResponseParser {
+    type HttpType = ResponseLine;
     fn parse_first_line(&mut self, data: &[u8]) -> Result<usize, FirstLineParseError> {
         let next_field_line_index = find_field_line_index(data).unwrap_or(0);
         let mut cursor = Cursor::new(&data[..next_field_line_index - 2]);
@@ -98,19 +77,26 @@ impl FirstLineParser for FirstLineResponseParser {
         self.set(parsed_line);
         Ok(next_field_line_index)
     }
+    fn get_first_line(self) -> Self::HttpType {
+        ResponseLine {
+            http_version: self.http_version,
+            status_code: self.status_code,
+            status_message: self.status_message,
+        }
+    }
+    fn get_first_line_ref(&self) -> Self::HttpType {
+        ResponseLine{
+            http_version: self.http_version.to_string(),
+            status_code: self.status_code.to_string(),
+            status_message: self.status_message.to_string(),
+        }
+    }
 }
 impl FirstLineResponseParser {
     fn set(&mut self, response_line: ResponseLine) {
         self.http_version = response_line.http_version;
         self.status_code = response_line.status_code;
         self.status_message = response_line.status_message;
-    }
-    pub fn get_first_line(self) -> ResponseLine {
-        ResponseLine {
-            http_version: self.http_version,
-            status_code: self.status_code,
-            status_message: self.status_message,
-        }
     }
     
 }

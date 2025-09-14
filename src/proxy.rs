@@ -1,7 +1,7 @@
 use crate::parser::{
     chunked_body_parser::BodyParser,
     first_line_parser::{
-        ExtractFirstLine, FirstLineParseError, FirstLineParser, RequestLine, ResponseLine
+        FirstLineParseError, FirstLineParser, RequestLine, ResponseLine
     },
     front_from_body_parser::parse_front,
     header_parser::{HeaderParseError, HeaderParser},
@@ -58,7 +58,7 @@ impl ProxyHeadersSender<ResponseLine> for ResponsePartProxySender {
 }
 
 
-pub struct ProxyParser<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpType>> {
+pub struct ProxyParser<'a, P: FirstLineParser, S: ProxyHeadersSender<P::HttpType>> {
     first_line_parser: P,
     header_parser: HeaderParser,
     body_parser: BodyParser,
@@ -69,7 +69,7 @@ pub struct ProxyParser<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeader
     remote_host_stream: &'a mut TcpStream,
     proxy_headers_sender: S,
 }
-impl<'a, P: FirstLineParser + ExtractFirstLine, S: ProxyHeadersSender<P::HttpType>>
+impl<'a, P: FirstLineParser, S: ProxyHeadersSender<P::HttpType>>
     ProxyParser<'a, P, S>
 {
     pub fn new<'b>(

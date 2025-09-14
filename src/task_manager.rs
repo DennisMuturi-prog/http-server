@@ -84,10 +84,10 @@ where
     let first_line_request_parser=FirstLineRequestParser::default();
     let header_parser=HeaderParser::default();
     let body_parser=BodyParser::default();
-    let mut request_parser = Parser::new(first_line_request_parser,header_parser,body_parser);
+    let request_parser = Parser::new(first_line_request_parser,header_parser,body_parser);
     match request_parser.parse(&mut connection) {
-        Ok(_) => {
-            let request=request_parser.create_request_payload();
+        Ok(payload_request) => {
+            let request=Request::from(payload_request);
             if request.request_method() == "OPTIONS" {
                 write_status_line(&mut connection, StatusCode::Ok)?;
                 let headers = get_preflight_headers();

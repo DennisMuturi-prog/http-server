@@ -5,7 +5,7 @@ use std::{
 use crate::parser::{
     chunked_body_parser::BodyParser,
     first_line_parser::{
-        FirstLineParseError, FirstLineParser, FirstLineRequestParser, FirstLineResponseParser,
+        FirstLineParseError, FirstLineParser,
         RequestLine, ResponseLine,
     },
     front_from_body_parser::parse_front,
@@ -57,7 +57,7 @@ impl<P: FirstLineParser> Parser<P> {
             parsing_state: ParsingState::FrontSeparateBody,
         }
     }
-    pub fn parse<S: Write + Read>(&mut self, stream: &mut S) -> Result<(), String> {
+    pub fn parse<S: Write + Read>(mut self, stream: &mut S) -> Result<Payload<P::HttpType> , String> {
         let mut buf = [0; 1024];
         let mut n = stream.read(&mut buf).map_err(|err| {
             println!("error in reading {}", err);
@@ -135,14 +135,14 @@ impl<P: FirstLineParser> Parser<P> {
                                                     self.parsing_state =
                                                         ParsingState::BodyContentLength;
 
-                                                    return Ok(());
+                                                    return Ok(self.create_parsed_payload());
                                                 }
                                             };
                                         if transfer_encoding_chunked == "chunked" {
                                             self.parsing_state = ParsingState::BodyChunked;
                                         } else {
                                             self.parsing_state = ParsingState::BodyContentLength;
-                                            return Ok(());
+                                            return Ok(self.create_parsed_payload());
                                         }
                                         continue;
                                     }
@@ -154,7 +154,7 @@ impl<P: FirstLineParser> Parser<P> {
                                 self.parsing_state = ParsingState::BodyContentLength;
                                 if self.body_len() >= content_length {
                                     self.body_parser.add_to_body(&self.data[self.body_cursor..]);
-                                    return Ok(());
+                                    return Ok(self.create_parsed_payload());
                                 }
                             }
                             HeaderParseError::OtherError => {
@@ -180,7 +180,7 @@ impl<P: FirstLineParser> Parser<P> {
                         .map_err(|_| "could not parse content length from header".to_string())?;
                     if self.body_len() >= content_length {
                         self.body_parser.add_to_body(&self.data[self.body_cursor..]);
-                        return Ok(());
+                        return Ok(self.create_parsed_payload());
                     }
                 }
                 ParsingState::BodyChunked => {
@@ -206,18 +206,18 @@ impl<P: FirstLineParser> Parser<P> {
                                 }
                                 None => {
                                     self.parsing_state = ParsingState::ParsingDone;
-                                    return Ok(());
+                                    return Ok(self.create_parsed_payload());
                                 }
                             }
 
                             },
-                            _ => return Ok(()),
+                            _ => return Ok(self.create_parsed_payload()),
                         },
                     }
                 }
 
                 ParsingState::BodyDone => {
-                    return Ok(());
+                    return Ok(self.create_parsed_payload());
                 }
                 ParsingState::TrailerHeaders => match self.header_parser.parse_trailer_header(&self.data[self.current_position..]) {
                     Ok(offset) => {
@@ -239,10 +239,10 @@ impl<P: FirstLineParser> Parser<P> {
                     },
                 },
                 ParsingState::TrailerHeadersDone => {
-                    return Ok(());
+                    return Ok(self.create_parsed_payload());
                 }
                 ParsingState::ParsingDone => {
-                    return Ok(());
+                    return Ok(self.create_parsed_payload());
                 }
             }
         }
@@ -254,28 +254,36 @@ impl<P: FirstLineParser> Parser<P> {
     fn body_len(&self) -> usize {
         self.data.len() - self.body_cursor
     }
-}
-
-impl Parser<FirstLineRequestParser> {
-    pub fn create_request_payload(self) -> Request {
-        Request {
-            request_line: self.first_line_parser.get_first_line(),
+    pub fn create_parsed_payload(self) ->Payload<P::HttpType>  {
+        Payload{
+            first_line: self.first_line_parser.get_first_line(),
             headers: self.header_parser.get_headers(),
             body: self.body_parser.get_body(),
         }
     }
 }
 
-impl Parser<FirstLineResponseParser> {
-    pub fn create_response_payload(self) -> Response {
-        Response {
-            response_line: self.first_line_parser.get_first_line(),
-            headers: self.header_parser.get_headers(),
-            body: self.body_parser.get_body(),
-        }
+
+pub struct Payload<T>{
+    first_line:T,
+    headers:HashMap<String,String>,
+    body:Vec<u8>
+}
+impl Payload<RequestLine>{
+
+}
+
+impl From<Payload<RequestLine>> for Request{
+    fn from(value: Payload<RequestLine>) -> Self {
+        Self { request_line: value.first_line, headers: value.headers, body: value.body }
     }
 }
 
+impl From<Payload<ResponseLine>> for  Response{
+    fn from(value: Payload<ResponseLine>) -> Self {
+        Self { response_line: value.first_line, headers: value.headers, body: value.body }
+    }
+}
 pub struct Request {
     request_line: RequestLine,
     headers: HashMap<String, String>,
