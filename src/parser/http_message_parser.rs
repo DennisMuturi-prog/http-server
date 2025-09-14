@@ -44,13 +44,11 @@ pub struct Parser<P: FirstLineParser> {
 impl<P: FirstLineParser> Parser<P> {
     pub fn new(
         first_line_parser: P,
-        header_parser: HeaderParser,
-        body_parser: BodyParser,
     ) -> Parser<P> {
         Parser {
             first_line_parser,
-            header_parser,
-            body_parser,
+            header_parser:HeaderParser::default(),
+            body_parser:BodyParser::default(),
             body_cursor: 0,
             current_position: 0,
             data: Vec::with_capacity(1024),

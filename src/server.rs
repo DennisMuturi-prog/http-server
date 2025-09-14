@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    parser::{chunked_body_parser::BodyParser, first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, header_parser::HeaderParser, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, task_manager::{handle, TaskManager}
+    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, task_manager::{handle, TaskManager}
 };
 
 pub struct Server<F> {
@@ -131,11 +131,11 @@ fn proxy_to_remote(mut client_stream: TcpStream) -> IoResult<()> {
     let host = "httpbin.org:80";
     let ip_lookup = host.to_socket_addrs()?.next().unwrap();
     let mut connection = TcpStream::connect(ip_lookup).unwrap();
-    let mut request_parser = ProxyParser::new(FirstLineRequestParser::default(),HeaderParser::default(),BodyParser::default(),&mut connection,RequestPartProxySender::new(host));
+    let mut request_parser = ProxyParser::new(FirstLineRequestParser::default(),&mut connection,RequestPartProxySender::new(host));
     request_parser
         .parse(&mut client_stream)
         .unwrap();
-    let mut response_parser = ProxyParser::new(FirstLineResponseParser::default(),HeaderParser::default(),BodyParser::default(),&mut client_stream,ResponsePartProxySender{});
+    let mut response_parser = ProxyParser::new(FirstLineResponseParser::default(),&mut client_stream,ResponsePartProxySender{});
     response_parser
         .parse(&mut connection)
         .unwrap();

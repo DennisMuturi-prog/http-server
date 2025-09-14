@@ -5,7 +5,7 @@ use single_threaded_server::{parser::http_message_parser::Request, response_writ
 
 fn main() -> IoResult<()> {
     let server = Server::serve(8000, 10,handler)?;
-    server.proxy_listen();
+    server.listen();
     Ok(())
 }
 

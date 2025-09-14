@@ -8,7 +8,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::{parser::{chunked_body_parser::BodyParser, first_line_parser::FirstLineRequestParser, header_parser::HeaderParser, http_message_parser::{Parser, Request}}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}};
+use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}};
 
 
 
@@ -81,10 +81,7 @@ pub fn handle<F>(mut connection: TcpStream, custom_handler: Arc<F>) -> IoResult<
 where
     F: Fn(ResponseWriter, Request) -> IoResult<Response>,
 {
-    let first_line_request_parser=FirstLineRequestParser::default();
-    let header_parser=HeaderParser::default();
-    let body_parser=BodyParser::default();
-    let request_parser = Parser::new(first_line_request_parser,header_parser,body_parser);
+    let request_parser = Parser::new(FirstLineRequestParser::default());
     match request_parser.parse(&mut connection) {
         Ok(payload_request) => {
             let request=Request::from(payload_request);

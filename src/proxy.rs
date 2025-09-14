@@ -74,15 +74,13 @@ impl<'a, P: FirstLineParser, S: ProxyHeadersSender<P::HttpType>>
 {
     pub fn new<'b>(
         first_line_parser: P,
-        header_parser: HeaderParser,
-        body_parser: BodyParser,
         remote_host_stream: &'b mut TcpStream,
         proxy_headers_sender: S,
     ) -> ProxyParser<'b, P, S> {
         ProxyParser {
             first_line_parser,
-            header_parser,
-            body_parser,
+            header_parser:HeaderParser::default(),
+            body_parser:BodyParser::default(),
             body_cursor: 0,
             current_position: 0,
             data: Vec::with_capacity(1024),
