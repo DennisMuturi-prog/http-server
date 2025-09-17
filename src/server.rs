@@ -17,7 +17,7 @@ pub struct Server<F> {
 
 impl<F> Server<F>
 where
-    F: Fn(ResponseWriter, Request) -> IoResult<Response> + Send + 'static + Sync,
+    F: Fn(ResponseWriter, Request) -> IoResult<Response> + Send + 'static +Sync ,
 {
     pub fn serve(port: u16, no_of_threads: usize, handler: F) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
@@ -36,8 +36,8 @@ where
                 Ok(my_stream) => my_stream,
                 Err(_) => continue,
             };
-            let custom_handler = handler.clone();
-            task_manager.execute(|| {
+            let custom_handler = Arc::clone(&handler);
+            task_manager.execute(move|| {
                 if let Err(err) = handle(stream, custom_handler) {
                     println!("error occurred handling,{err}");
                 }
