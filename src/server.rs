@@ -37,7 +37,7 @@ where
                 Err(_) => continue,
             };
             let custom_handler = Arc::clone(&handler);
-            task_manager.execute(move|| {
+            task_manager.execute(|| {
                 if let Err(err) = handle(stream, custom_handler) {
                     println!("error occurred handling,{err}");
                 }
