@@ -11,32 +11,31 @@ use crate::{
 
 pub struct Server<F> {
     listener: TcpListener,
-    handler: F,
+    handler: Arc<F>,
     no_of_threads: usize,
 }
 
 impl<F> Server<F>
 where
-    F: Fn(ResponseWriter, Request) -> IoResult<Response> + Send + 'static +Sync ,
+    F: Fn(ResponseWriter, Request) -> IoResult<Response>+ Send + Sync +'static,
 {
     pub fn serve(port: u16, no_of_threads: usize, handler: F) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
         Ok(Server {
             listener,
-            handler,
+            handler:Arc::new(handler),
             no_of_threads,
         })
     }
     pub fn listen(self) {
         let task_manager = TaskManager::new(self.no_of_threads);
-        let handler = Arc::new(self.handler);
         for stream in self.listener.incoming() {
             println!("new");
             let stream = match stream {
                 Ok(my_stream) => my_stream,
                 Err(_) => continue,
             };
-            let custom_handler = Arc::clone(&handler);
+            let custom_handler = Arc::clone(&self.handler);
             task_manager.execute(|| {
                 if let Err(err) = handle(stream, custom_handler) {
                     println!("error occurred handling,{err}");
