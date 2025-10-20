@@ -1,14 +1,14 @@
 use std::{
-    io::Result as IoResult,
+    io::{Result as IoResult, Write},
     net::TcpStream,
     sync::{
-        Arc, Mutex,
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, Sender}, Arc, Mutex
     },
     thread::{self, JoinHandle},
 };
 
-use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response_writer::{ContentType, Response, ResponseWriter}, server::{get_preflight_headers, write_headers, write_status_line, StatusCode}};
+
+use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response::SendingResponse, response_writer::{ContentType, ResponseWriter}, routing::{HandlerFunction, HttpVerb, RoutingMap}, server::{get_common_headers, get_preflight_headers, write_headers, write_response_headers, write_response_status_line, write_status_line, StatusCode}};
 
 
 
@@ -77,22 +77,33 @@ impl Worker {
     }
 }
 
-pub fn handle<F>(mut connection: TcpStream, custom_handler: Arc<F>) -> IoResult<()>
+pub fn handle<F,Args>(mut connection: TcpStream, custom_handler: Arc<RoutingMap<F>>) -> IoResult<()>
 where
-    F: Fn(ResponseWriter, Request) -> IoResult<Response>,
+    F: HandlerFunction<Args>,
 {
     let request_parser = Parser::new(FirstLineRequestParser::default());
     match request_parser.parse(&mut connection) {
         Ok(payload_request) => {
             let request=Request::from(payload_request);
-            if request.request_method() == "OPTIONS" {
+            if request.request_method() == HttpVerb::OPTIONS {
                 write_status_line(&mut connection, StatusCode::Ok)?;
                 let headers = get_preflight_headers();
                 write_headers(&mut connection, headers)?;
                 return Ok(());
+
             }
-            let response_writer = ResponseWriter::new(&mut connection);
-            custom_handler(response_writer, request)?;
+            let handler_function=match custom_handler.get_handler(&request.request_method(), request.request_path()){
+                Some(val) => val,
+                None => {
+                    write_status_line(&mut connection, StatusCode::NotFound)?;
+                    let headers = get_common_headers();
+                    write_headers(&mut connection, headers)?;
+                    return Ok(());
+
+                },
+            };
+            let sending_response=handler_function.execute(request, custom_handler);
+            send_response_to_network(connection, sending_response)?;
             Ok(())
         }
         Err(err) => {
@@ -108,6 +119,15 @@ where
             Ok(())
         }
     }
+}
+
+fn send_response_to_network(mut connection:TcpStream,sending_response:SendingResponse)->IoResult<()>{
+    write_response_status_line(&mut connection,sending_response.status_code() )?;
+    write_response_headers(&mut connection, sending_response.headers())?;
+    if !sending_response.body().is_empty(){
+        connection.write_all(sending_response.body())?;
+    }
+    Ok(())
 }
 
 
