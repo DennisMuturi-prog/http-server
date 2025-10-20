@@ -15,6 +15,7 @@ impl<'a> ResponseWriter<'a> {
             StatusCode::Ok => "HTTP/1.1 200 OK\r\n",
             StatusCode::BadRequest => "HTTP/1.1 400 Bad Request\r\n",
             StatusCode::InternalServerError => "HTTP/1.1 500 Internal Server Error\r\n",
+            StatusCode::NotFound=> "HTTP/1.1 404 Not Found"
         };
         self.connection.write_all(status.as_bytes())?;
         Ok(Headers {

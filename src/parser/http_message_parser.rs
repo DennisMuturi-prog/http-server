@@ -307,7 +307,13 @@ impl Request {
         }
     }
     pub fn request_path(&self) -> &str {
-        self.request_line.request_target()
+        let val=self.request_line.request_target().split('?').collect::<Vec<&str>>();
+        if !val.is_empty(){
+            val[0]
+        }
+        else{
+            ""
+        }
     }
     pub fn query_params_string(&self) -> &str {
 
