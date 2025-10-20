@@ -1,19 +1,35 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
-use matchit::Router;
-use single_threaded_server::{extractor::FromRequest, parser::http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
+use serde::Deserialize;
+use single_threaded_server::{extractor::{Json, Path, Query}, parser::http_message_parser::Request, response::{SendingResponse, StatusMessage}, response_writer::{ContentType, Response, ResponseWriter}, server::{ get_common_headers_with_content, Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
-    let mut router = Router::new();
-    router.insert("/users/{id}", handler)?;
-    let match_against=router.at("/users/12")?;
-    for j in match_against.params.iter(){
+    
+    let mut server = Server::serve(8000, 10)?;
+    server.post("/{id}/{name}/hello", new_handler).unwrap();
+    server.listen();
+    Ok(())
+}
 
-    }
-    // let server = Server::serve(8000, 10,handler)?;
-    // server.listen();
-    // Ok(())
+fn new_handler(Query(user):Query<User>,Json(user2):Json<User>,Path(user_info):Path<UserInfo>)->SendingResponse{
+    println!("json username is {} and password is {}",user2.username,user2.password);
+    println!("query username is {} and password is {}",user.username,user.password);
+    println!("path id is {} and name is {}",user_info.id,user_info.name);
+    let message=b"hello";
+    SendingResponse::new(StatusMessage::Accepted,StatusCode::Ok,get_common_headers_with_content(message),message.to_vec())
+
+}
+#[derive(Deserialize)]
+struct User{
+    username:String,
+    password:String,
+}
+
+#[derive(Deserialize)]
+struct UserInfo{
+    id:u32,
+    name:String,
 }
 
 fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Response> {
