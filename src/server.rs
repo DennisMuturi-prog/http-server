@@ -1,27 +1,22 @@
 use std::{
-    collections::HashMap, hash::Hash, io::{Result as IoResult, Write}, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
+    collections::HashMap, io::{Result as IoResult, Write}, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
 };
-
-use matchit::Router;
-
 use crate::{
-    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
+    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
 };
 
 pub struct Server<F> {
     listener: TcpListener,
-    handler: Arc<F>,
     no_of_threads: usize,
     router:RoutingMap<F>
 }
 
 impl<F> Server<F>
 {
-    pub fn serve(port: u16, no_of_threads: usize, handler: F) -> IoResult<Self> {
+    pub fn serve(port: u16, no_of_threads: usize) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
         Ok(Server {
             listener,
-            handler:Arc::new(handler),
             no_of_threads,
             router:RoutingMap::new()
         })
@@ -41,17 +36,19 @@ impl<F> Server<F>
         self.router.add_handler(HttpVerb::DELETE, handler, route)?;
         Ok(())
     }
-    pub fn listen(self) {
+    pub fn listen<Args>(self) 
+    where F:HandlerFunction<Args>{
         let task_manager = TaskManager::new(self.no_of_threads);
+        let routing_map=Arc::new(self.router);
         for stream in self.listener.incoming() {
             println!("new");
             let stream = match stream {
                 Ok(my_stream) => my_stream,
                 Err(_) => continue,
             };
-            let custom_handler = Arc::clone(&self.handler);
+            let global_router=Arc::clone(&routing_map);
             task_manager.execute(|| {
-                if let Err(err) = handle(stream, custom_handler) {
+                if let Err(err) = handle(stream,global_router ) {
                     println!("error occurred handling,{err}");
                 }
             });
@@ -75,6 +72,7 @@ pub enum StatusCode {
     Ok,
     BadRequest,
     InternalServerError,
+    NotFound
 }
 
 pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoResult<()> {
@@ -82,6 +80,18 @@ pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) ->
         StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
         StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
         StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
+        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found")
+    };
+    status.push_str("\r\n");
+    stream_writer.write_all(status.as_bytes())?;
+    Ok(())
+}
+pub fn write_response_status_line<T: Write>(stream_writer: &mut T, status: &StatusCode) -> IoResult<()> {
+    let mut status = match status {
+        StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
+        StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
+        StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
+        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found")
     };
     status.push_str("\r\n");
     stream_writer.write_all(status.as_bytes())?;
@@ -117,13 +127,40 @@ pub fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
 pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
     HashMap::from([
         ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-        ("Connection", "keep-alive"),
+        ("Content-Length","0"),
+        ("Connection", "close"),
+    ])
+}
+
+pub fn get_common_headers_with_content(body:&[u8]) -> HashMap<String, String> {
+    let body_length=body.len();
+    HashMap::from([
+        ("Access-Control-Allow-Origin".to_string(), "https://hoppscotch.io".to_string()),
+        ("Content-Length".to_string(),body_length.to_string()),
+        ("Connection".to_string(), "close".to_string()),
+        ("Content-Type".to_string(), "text/plain".to_string()),
     ])
 }
 
 pub fn write_headers<T: Write>(
     stream_writer: &mut T,
     headers: HashMap<&str, &str>,
+) -> IoResult<()> {
+    let mut headers_response = String::new();
+    for (key, value) in headers {
+        headers_response.push_str(key);
+        headers_response.push_str(": ");
+        headers_response.push_str(value);
+        headers_response.push_str("\r\n");
+    }
+    headers_response.push_str("\r\n");
+    stream_writer.write_all(headers_response.as_bytes())?;
+    Ok(())
+}
+
+pub fn write_response_headers<T: Write>(
+    stream_writer: &mut T,
+    headers: &HashMap<String, String>,
 ) -> IoResult<()> {
     let mut headers_response = String::new();
     for (key, value) in headers {
