@@ -1,19 +1,17 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{ sync::Arc};
 
-use matchit::{Router};
 use serde::{Deserialize, de::DeserializeOwned};
 use thiserror::Error;
 
 
 use crate::{
-    parser::http_message_parser::Request,
-    routing::{HandlerFunction, HttpVerb},
+    parser::http_message_parser::Request, response::{SendingResponse, StatusMessage}, routing::{HandlerFunction, RoutingMap}, server::{get_common_headers_with_content, StatusCode}
 };
 
-pub struct Json<T>(T);
+pub struct Json<T>(pub T);
 
 pub trait FromRequest {
-    type Error;
+    type Error:IntoResponse;
     fn from_request(request: &Request) -> Result<Self, Self::Error>
     where
         Self: std::marker::Sized;
@@ -30,7 +28,7 @@ where
     }
 }
 
-pub struct Query<T>(T);
+pub struct Query<T>(pub T);
 
 impl<T> FromRequest for Query<T>
 where
@@ -43,13 +41,13 @@ where
     }
 }
 
-pub struct Path<T>(T);
+pub struct Path<T>(pub T);
 
 pub trait FromRoutingMap {
-    type Error;
+    type Error:IntoResponse;
     fn from_routing_map<F, Args>(
         request: &Request,
-        routing: Arc<HashMap<HttpVerb, Router<F>>>,
+        routing: Arc<RoutingMap<F>>,
     ) -> Result<Self, Self::Error>
     where
         Self: Sized,
@@ -62,25 +60,26 @@ where T:DeserializeOwned {
 
     fn from_routing_map<F, Args>(
         request: &Request,
-        routing: Arc<HashMap<HttpVerb, Router<F>>>,
+        routing: Arc<RoutingMap<F>>,
     ) -> Result<Self, Self::Error>
     where
         Self: Sized,
         F: HandlerFunction<Args>,
     {
-        match routing.get(&request.request_method()) {
+        match routing.get_method_router(&request.request_method()) {
             Some(router) => {
                 let matched_route = router.at(request.request_path())?;
                 let params = matched_route.params;
                 let query_string = params
-                    .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
-                    .collect::<Vec<String>>()
-                    .join("&");
-                let extracted_params: T = serde_urlencoded::from_str(&query_string)?;
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+                .join("&");
+            println!("query string {}",query_string);
+            let extracted_params: T = serde_urlencoded::from_str(&query_string)?;
                 Ok(Path(extracted_params))
             }
-            None => return Err(RoutingError::NotFound),
+            None => Err(RoutingError::NotFound),
         }
     }
 }
@@ -104,5 +103,32 @@ impl<'a, T: Deserialize<'a>> TryFrom<&'a Request> for Path<T> {
 }
 
 pub trait IntoResponse {
+    fn into_response(self)->SendingResponse;
     
 }
+
+impl IntoResponse for serde_json::Error{
+    fn into_response(self)->SendingResponse {
+        let message=b"json data error";
+        let headers=get_common_headers_with_content(message);
+        SendingResponse::new(StatusMessage::BadRequest, StatusCode::BadRequest, headers,message.to_vec() )
+    }
+}
+
+impl IntoResponse for serde_urlencoded::de::Error{
+    fn into_response(self)->SendingResponse {
+        let message=b"url encoded data error";
+        let headers=get_common_headers_with_content(message);
+        SendingResponse::new(StatusMessage::BadRequest, StatusCode::BadRequest, headers,message.to_vec() )
+    }
+}
+
+impl IntoResponse for RoutingError{
+    fn into_response(self)->SendingResponse {
+        let message=b"Not Found or url encoded error";
+        let headers=get_common_headers_with_content(message);
+        SendingResponse::new(StatusMessage::BadRequest, StatusCode::BadRequest, headers,message.to_vec() )
+    }
+}
+
+
