@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::{ Read, Write},
 };
-use crate::parser::{
+use crate::{parser::{
     chunked_body_parser::BodyParser,
     first_line_parser::{
         FirstLineParseError, FirstLineParser,
@@ -10,7 +10,7 @@ use crate::parser::{
     },
     front_from_body_parser::parse_front,
     header_parser::{ HeaderParseError, HeaderParser},
-};
+}, routing::HttpVerb};
 
 pub enum ParseError {
     NotEnoughBytes,
@@ -285,7 +285,7 @@ impl From<Payload<ResponseLine>> for  Response{
 pub struct Request {
     request_line: RequestLine,
     headers: HashMap<String, String>,
-    body: Vec<u8>,
+    body: Vec<u8>
 }
 
 impl Request {
@@ -296,11 +296,28 @@ impl Request {
             body,
         }
     }
-    pub fn request_method(&self) -> &str {
-        self.request_line.method()
+    pub fn request_method(&self) -> HttpVerb {
+        match self.request_line.method(){
+            "GET"=>HttpVerb::GET,
+            "POST"=>HttpVerb::POST,
+            "PUT"=>HttpVerb::PUT,
+            "PATCH"=>HttpVerb::PATCH,
+            "DELETE"=>HttpVerb::DELETE,
+            _=>HttpVerb::OPTIONS
+        }
     }
     pub fn request_path(&self) -> &str {
         self.request_line.request_target()
+    }
+    pub fn query_params_string(&self) -> &str {
+
+        let val=self.request_line.request_target().split('?').collect::<Vec<&str>>();
+        if val.len()==2{
+            val[1]
+
+        }else{
+            ""
+        }
     }
 
     pub fn header(&self, header: &str) -> Option<&String> {

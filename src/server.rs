@@ -1,23 +1,21 @@
 use std::{
-    collections::HashMap,
-    io::{Result as IoResult, Write},
-    net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs},
-    sync::Arc,
+    collections::HashMap, hash::Hash, io::{Result as IoResult, Write}, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
 };
 
+use matchit::Router;
+
 use crate::{
-    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, task_manager::{handle, TaskManager}
+    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}, http_message_parser::Request}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, response_writer::{ Response, ResponseWriter}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
 };
 
 pub struct Server<F> {
     listener: TcpListener,
     handler: Arc<F>,
     no_of_threads: usize,
+    router:RoutingMap<F>
 }
 
 impl<F> Server<F>
-where
-    F: Fn(ResponseWriter, Request) -> IoResult<Response>+ Send + Sync +'static,
 {
     pub fn serve(port: u16, no_of_threads: usize, handler: F) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
@@ -25,7 +23,23 @@ where
             listener,
             handler:Arc::new(handler),
             no_of_threads,
+            router:RoutingMap::new()
         })
+    }
+    pub fn post<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args>{
+        self.router.add_handler(HttpVerb::POST, handler, route)?;
+        Ok(())
+    }
+    pub fn get<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args>{
+        self.router.add_handler(HttpVerb::GET, handler, route)?;
+        Ok(())
+    }
+    pub fn delete<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args>{
+        self.router.add_handler(HttpVerb::DELETE, handler, route)?;
+        Ok(())
     }
     pub fn listen(self) {
         let task_manager = TaskManager::new(self.no_of_threads);

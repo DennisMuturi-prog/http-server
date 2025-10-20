@@ -1,12 +1,19 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
-use single_threaded_server::{parser::http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
+use matchit::Router;
+use single_threaded_server::{extractor::FromRequest, parser::http_message_parser::Request, response_writer::{ContentType, Response, ResponseWriter}, server::{Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
-    let server = Server::serve(8000, 10,handler)?;
-    server.listen();
-    Ok(())
+    let mut router = Router::new();
+    router.insert("/users/{id}", handler)?;
+    let match_against=router.at("/users/12")?;
+    for j in match_against.params.iter(){
+
+    }
+    // let server = Server::serve(8000, 10,handler)?;
+    // server.listen();
+    // Ok(())
 }
 
 fn handler(response_writer: ResponseWriter, request: Request) -> IoResult<Response> {
