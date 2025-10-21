@@ -267,10 +267,6 @@ pub struct Payload<T>{
     headers:HashMap<String,String>,
     body:Vec<u8>
 }
-impl Payload<RequestLine>{
-
-}
-
 impl From<Payload<RequestLine>> for Request{
     fn from(value: Payload<RequestLine>) -> Self {
         Self { request_line: value.first_line, headers: value.headers, body: value.body }

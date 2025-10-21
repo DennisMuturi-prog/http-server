@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use matchit::Router;
 
 use crate::{
-    extractor::{FromRequest, FromRoutingMap, IntoResponse},
+    extractor::{FromRequest, FromRequestBody, FromRoutingMap, IntoResponse},
     parser::http_message_parser::Request,
     response::SendingResponse,
 };
@@ -57,12 +57,13 @@ pub trait HandlerFunction<Args>: Send + Sync + 'static+Clone{
     where
         F2: HandlerFunction<Args2>;
 }
-impl<F, T1, T2, T3> HandlerFunction<(T1, T2, T3)> for F
+impl<F, I,T1, T2, T3> HandlerFunction<(T1, I,T2, T3)> for F
 where
     T1: FromRequest,
-    T2: FromRequest,
-    T3: FromRoutingMap,
-    F: Fn(T1, T2, T3) -> SendingResponse + Send + Sync + 'static + Clone,
+    T2: FromRoutingMap,
+    T3: FromRequestBody,
+    I:IntoResponse,
+    F: Fn(T1, T2, T3) -> I + Send + Sync + 'static + Clone,
 {
     fn execute<F2, Args>(
         self,
@@ -76,15 +77,15 @@ where
             Ok(val) => val,
             Err(err) => return err.into_response(),
         };
-        let t2 = match T2::from_request(&request) {
+        let t2 = match T2::from_routing_map(&request,Arc::clone(&routing_map)) {
             Ok(val) => val,
             Err(err) => return err.into_response(),
         };
-        let t3 = match T3::from_routing_map(&request, Arc::clone(&routing_map)) {
+        let t3 = match T3::from_request_body(&request) {
             Ok(val) => val,
             Err(err) => return err.into_response(),
         };
-        self(t1, t2, t3)
+        self(t1, t2, t3).into_response()
     }
 }
 

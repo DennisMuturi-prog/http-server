@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
 use serde::Deserialize;
-use single_threaded_server::{extractor::{Json, Path, Query}, parser::http_message_parser::Request, response::{SendingResponse, StatusMessage}, response_writer::{ContentType, Response, ResponseWriter}, server::{ get_common_headers_with_content, Server, StatusCode}
+use single_threaded_server::{extractor::{Form, Json, Path, Query}, parser::http_message_parser::Request, response::{SendingResponse, StatusMessage}, response_writer::{ContentType, Response, ResponseWriter}, server::{ get_common_headers_with_content, Server, StatusCode}
 };
 
 fn main() -> IoResult<()> {
@@ -12,7 +12,7 @@ fn main() -> IoResult<()> {
     Ok(())
 }
 
-fn new_handler(Query(user):Query<User>,Json(user2):Json<User>,Path(user_info):Path<UserInfo>)->SendingResponse{
+fn new_handler(Query(user):Query<User>,Path(user_info):Path<UserInfo>,Form(user2):Form<User>)->SendingResponse{
     println!("json username is {} and password is {}",user2.username,user2.password);
     println!("query username is {} and password is {}",user.username,user.password);
     println!("path id is {} and name is {}",user_info.id,user_info.name);
