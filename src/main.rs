@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::{Read, Result as IoResult, Write}, thread::sleep, time};
 
-use serde::Deserialize;
-use single_threaded_server::{extractor::{Form, Json, Path, Query}, parser::http_message_parser::Request, response::{SendingResponse, StatusMessage}, response_writer::{ContentType, Response, ResponseWriter}, server::{ get_common_headers_with_content, Server, StatusCode}
+use serde::{Deserialize, Serialize};
+use single_threaded_server::{extractor::{Form, IntoResponse, Json, Path, Query}, parser::http_message_parser::Request, response::{ get_common_headers_with_content_type_header, ContentType, SendingResponse, StatusCode, StatusMessage}, response_writer::{Response, ResponseWriter}, server::Server
 };
 
 fn main() -> IoResult<()> {
@@ -12,15 +12,20 @@ fn main() -> IoResult<()> {
     Ok(())
 }
 
-fn new_handler(Query(user):Query<User>,Path(user_info):Path<UserInfo>,Form(user2):Form<User>)->SendingResponse{
+fn new_handler(Query(user):Query<User>,Path(user_info):Path<UserInfo>,Form(user2):Form<User>)->impl IntoResponse{
     println!("json username is {} and password is {}",user2.username,user2.password);
     println!("query username is {} and password is {}",user.username,user.password);
     println!("path id is {} and name is {}",user_info.id,user_info.name);
-    let message=b"hello";
-    SendingResponse::new(StatusMessage::Accepted,StatusCode::Ok,get_common_headers_with_content(message),message.to_vec())
+    let new_username=User{
+        username:"hello".to_string(),
+        password:"world".to_string()
+    };
+    Json(new_username)
+    // let message=b"hello";
+    // SendingResponse::new(StatusMessage::Accepted,StatusCode::Ok,get_common_headers_with_content_type_header(message,ContentType::TextPlain),message.to_vec())
 
 }
-#[derive(Deserialize)]
+#[derive(Serialize,Deserialize)]
 struct User{
     username:String,
     password:String,

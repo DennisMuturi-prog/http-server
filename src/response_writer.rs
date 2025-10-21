@@ -1,6 +1,7 @@
 use std::{collections::HashMap, io::{Write,Result as IoResult}, net::TcpStream};
 
-use crate::server::{get_common_headers, StatusCode};
+use crate::response::{get_common_headers, ContentType, StatusCode};
+
 
 pub struct ResponseWriter<'a> {
     connection: &'a mut TcpStream,
@@ -15,7 +16,8 @@ impl<'a> ResponseWriter<'a> {
             StatusCode::Ok => "HTTP/1.1 200 OK\r\n",
             StatusCode::BadRequest => "HTTP/1.1 400 Bad Request\r\n",
             StatusCode::InternalServerError => "HTTP/1.1 500 Internal Server Error\r\n",
-            StatusCode::NotFound=> "HTTP/1.1 404 Not Found"
+            StatusCode::NotFound=> "HTTP/1.1 404 Not Found",
+            StatusCode::MethodNotAllowed=>"HTTP/1.1 405 Method Not Allowed"
         };
         self.connection.write_all(status.as_bytes())?;
         Ok(Headers {
@@ -144,12 +146,7 @@ pub struct ChunkedBodyWithTrailerHeaders<'a> {
     connection: &'a mut TcpStream
 }
 
-pub enum ContentType{
-    ApplicationJson,
-    ImageJpeg,
-    TextHtml,
-    TextPlain
-}
+
 
 impl ContentType {
     fn as_bytes(&self) -> &[u8] {
@@ -158,6 +155,7 @@ impl ContentType {
             ContentType::ImageJpeg => b"Content-Type: image/jpeg\r\n",
             ContentType::TextHtml => b"Content-Type: text/html; charset=utf-8\r\n",
             ContentType::TextPlain => b"Content-Type: text/plain; charset=utf-8\r\n",
+            ContentType::ApplicationUrlEncoded=>b"Content-Type: application/x-www-form-urlencoded; charset=utf-8\r\n"
         }
     }
 }

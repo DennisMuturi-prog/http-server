@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::{Result as IoResult, Write}};
 
-use crate::server::StatusCode;
+use crate::parser::first_line_parser::{ResponseLine};
+
 
 pub struct SendingResponse{
     status_message:StatusMessage,
@@ -99,3 +100,134 @@ pub enum StatusMessage {
     NotExtended = 510,
     NetworkAuthenticationRequired = 511,
 }
+
+
+pub enum StatusCode {
+    Ok,
+    BadRequest,
+    InternalServerError,
+    NotFound,
+    MethodNotAllowed
+}
+
+pub enum ContentType{
+    ApplicationJson,
+    ApplicationUrlEncoded,
+    TextPlain,
+    ImageJpeg,
+    TextHtml,
+}
+
+pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoResult<()> {
+    let mut status = match status {
+        StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
+        StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
+        StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
+        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found"),
+        StatusCode::MethodNotAllowed=>String::from("HTTP/1.1 405 Method Not Allowed")
+    };
+    status.push_str("\r\n");
+    stream_writer.write_all(status.as_bytes())?;
+    Ok(())
+}
+pub fn write_response_status_line<T: Write>(stream_writer: &mut T, status: &StatusCode) -> IoResult<()> {
+    let mut status = match status {
+        StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
+        StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
+        StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
+        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found"),
+        StatusCode::MethodNotAllowed=>String::from("HTTP/1.1 405 Method Not Allowed")
+    };
+    status.push_str("\r\n");
+    stream_writer.write_all(status.as_bytes())?;
+    Ok(())
+}
+
+
+
+pub fn write_proxied_response_status_line<T: Write>(
+    stream_writer: &mut T,
+    response: &ResponseLine,
+) -> IoResult<()> {
+    let status_line = format!(
+        "HTTP/1.1 {} {}\r\n",
+        response.status_code(),
+        response.status_message()
+    );
+    stream_writer.write_all(status_line.as_bytes())?;
+    Ok(())
+}
+
+pub fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
+    HashMap::from([
+        ("Content-Length", "0"),
+        ("Content-Type", "text/plain"),
+        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
+        ("Access-Control-Allow-Methods", "*"),
+        ("Access-Control-Allow-Headers", "*"),
+        ("Connection", "close"),
+    ])
+}
+
+pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
+    HashMap::from([
+        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
+        ("Content-Length","0"),
+        ("Connection", "close"),
+    ])
+}
+
+
+
+pub fn get_common_headers_with_content_type_header(body:&[u8],content_type:ContentType) -> HashMap<String, String> {
+    let content_type=match content_type{
+        ContentType::ApplicationJson => "application/json",
+        ContentType::ApplicationUrlEncoded => "application/x-www-form-urlencoded",
+        ContentType::TextPlain => "text/plain",
+        ContentType::ImageJpeg => "image/jpeg",
+        ContentType::TextHtml => "text/html",
+    };
+    let body_length=body.len();
+    HashMap::from([
+        ("Access-Control-Allow-Origin".to_string(), "https://hoppscotch.io".to_string()),
+        ("Content-Length".to_string(),body_length.to_string()),
+        ("Connection".to_string(), "close".to_string()),
+        ("Content-Type".to_string(), content_type.to_string()),
+    ])
+}
+
+pub fn write_headers<T: Write>(
+    stream_writer: &mut T,
+    headers: HashMap<&str, &str>,
+) -> IoResult<()> {
+    let mut headers_response = String::new();
+    for (key, value) in headers {
+        headers_response.push_str(key);
+        headers_response.push_str(": ");
+        headers_response.push_str(value);
+        headers_response.push_str("\r\n");
+    }
+    headers_response.push_str("\r\n");
+    stream_writer.write_all(headers_response.as_bytes())?;
+    Ok(())
+}
+
+pub fn write_response_headers<T: Write>(
+    stream_writer: &mut T,
+    headers: &HashMap<String, String>,
+) -> IoResult<()> {
+    let mut headers_response = String::new();
+    for (key, value) in headers {
+        headers_response.push_str(key);
+        headers_response.push_str(": ");
+        headers_response.push_str(value);
+        headers_response.push_str("\r\n");
+    }
+    headers_response.push_str("\r\n");
+    stream_writer.write_all(headers_response.as_bytes())?;
+    Ok(())
+}
+
+
+
+

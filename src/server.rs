@@ -1,8 +1,8 @@
 use std::{
-    collections::HashMap, io::{Result as IoResult, Write}, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
+    io::Result as IoResult, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
 };
 use crate::{
-    parser::{ first_line_parser::{FirstLineRequestParser, FirstLineResponseParser, ResponseLine}}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
+    parser:: first_line_parser::{FirstLineRequestParser, FirstLineResponseParser}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
 };
 
 pub struct Server<F> {
@@ -67,115 +67,6 @@ impl<F> Server<F>
         }
     }
 }
-
-pub enum StatusCode {
-    Ok,
-    BadRequest,
-    InternalServerError,
-    NotFound
-}
-
-pub fn write_status_line<T: Write>(stream_writer: &mut T, status: StatusCode) -> IoResult<()> {
-    let mut status = match status {
-        StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
-        StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
-        StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
-        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found")
-    };
-    status.push_str("\r\n");
-    stream_writer.write_all(status.as_bytes())?;
-    Ok(())
-}
-pub fn write_response_status_line<T: Write>(stream_writer: &mut T, status: &StatusCode) -> IoResult<()> {
-    let mut status = match status {
-        StatusCode::Ok => String::from("HTTP/1.1 200 OK"),
-        StatusCode::BadRequest => String::from("HTTP/1.1 400 Bad Request"),
-        StatusCode::InternalServerError => String::from("HTTP/1.1 500 Internal Server Error"),
-        StatusCode::NotFound=> String::from("HTTP/1.1 404 Not Found")
-    };
-    status.push_str("\r\n");
-    stream_writer.write_all(status.as_bytes())?;
-    Ok(())
-}
-
-
-
-pub fn write_proxied_response_status_line<T: Write>(
-    stream_writer: &mut T,
-    response: &ResponseLine,
-) -> IoResult<()> {
-    let status_line = format!(
-        "HTTP/1.1 {} {}\r\n",
-        response.status_code(),
-        response.status_message()
-    );
-    stream_writer.write_all(status_line.as_bytes())?;
-    Ok(())
-}
-
-pub fn get_preflight_headers() -> HashMap<&'static str, &'static str> {
-    HashMap::from([
-        ("Content-Length", "0"),
-        ("Content-Type", "text/plain"),
-        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-        ("Access-Control-Allow-Methods", "*"),
-        ("Access-Control-Allow-Headers", "*"),
-        ("Connection", "close"),
-    ])
-}
-
-pub fn get_common_headers() -> HashMap<&'static str, &'static str> {
-    HashMap::from([
-        ("Access-Control-Allow-Origin", "https://hoppscotch.io"),
-        ("Content-Length","0"),
-        ("Connection", "close"),
-    ])
-}
-
-pub fn get_common_headers_with_content(body:&[u8]) -> HashMap<String, String> {
-    let body_length=body.len();
-    HashMap::from([
-        ("Access-Control-Allow-Origin".to_string(), "https://hoppscotch.io".to_string()),
-        ("Content-Length".to_string(),body_length.to_string()),
-        ("Connection".to_string(), "close".to_string()),
-        ("Content-Type".to_string(), "text/plain".to_string()),
-    ])
-}
-
-pub fn write_headers<T: Write>(
-    stream_writer: &mut T,
-    headers: HashMap<&str, &str>,
-) -> IoResult<()> {
-    let mut headers_response = String::new();
-    for (key, value) in headers {
-        headers_response.push_str(key);
-        headers_response.push_str(": ");
-        headers_response.push_str(value);
-        headers_response.push_str("\r\n");
-    }
-    headers_response.push_str("\r\n");
-    stream_writer.write_all(headers_response.as_bytes())?;
-    Ok(())
-}
-
-pub fn write_response_headers<T: Write>(
-    stream_writer: &mut T,
-    headers: &HashMap<String, String>,
-) -> IoResult<()> {
-    let mut headers_response = String::new();
-    for (key, value) in headers {
-        headers_response.push_str(key);
-        headers_response.push_str(": ");
-        headers_response.push_str(value);
-        headers_response.push_str("\r\n");
-    }
-    headers_response.push_str("\r\n");
-    stream_writer.write_all(headers_response.as_bytes())?;
-    Ok(())
-}
-
-
-
 
 fn proxy_to_remote(mut client_stream: TcpStream) -> IoResult<()> {
     let host = "httpbin.org:80";
