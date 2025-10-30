@@ -18,6 +18,11 @@ pub enum HttpVerb {
     OPTIONS,
     HEAD,
 }
+
+
+#[derive(Default)]
+
+
 pub struct RoutingMap<F>(HashMap<HttpVerb, Router<F>>);
 
 impl<F> RoutingMap<F> {
@@ -89,11 +94,4 @@ where
     }
 }
 
-// #[derive(Error, Debug)]
-// enum ExtractionError {
-//     #[error("route handler not found")]
-//     RoutingError,
-//     #[error("failed to deserialize body json {0}")]
-//     SerdeJsonError(#[from] serde_urlencoded::de::Error)
-// }
-// impl IntoResponse for ExtractionError{}
+
