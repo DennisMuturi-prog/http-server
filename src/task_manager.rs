@@ -8,7 +8,7 @@ use std::{
 };
 
 
-use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response::{get_common_headers, get_preflight_headers, write_headers, write_response_headers, write_response_status_line, write_status_line, ContentType, SendingResponse, StatusCode}, response_writer::ResponseWriter, routing::{HandlerFunction, HttpVerb, RoutingMap}};
+use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response::{get_common_headers, get_preflight_headers, write_headers, write_response_headers, write_response_status_line, write_status_line, ContentType, Response, StatusCode}, response_writer::ResponseWriter, routing::{HandlerFunction, HttpVerb, RoutingMap}};
 
 
 
@@ -19,7 +19,8 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub fn new(no_of_threads: usize) -> Self {
+    pub fn new(no_of_threads: usize) -> Self
+    {
         let (tramsmitter, receiver) = mpsc::channel::<Job>();
         let receiver = Arc::new(Mutex::new(receiver));
         let mut workers = Vec::with_capacity(no_of_threads);
@@ -121,7 +122,7 @@ where
     }
 }
 
-fn send_response_to_network(mut connection:TcpStream,sending_response:SendingResponse)->IoResult<()>{
+fn send_response_to_network(mut connection:TcpStream,sending_response:Response)->IoResult<()>{
     write_response_status_line(&mut connection,sending_response.status_code() )?;
     write_response_headers(&mut connection, sending_response.headers())?;
     if !sending_response.body().is_empty(){

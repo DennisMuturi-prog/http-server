@@ -3,14 +3,14 @@ use std::{collections::HashMap, io::{Result as IoResult, Write}};
 use crate::parser::first_line_parser::{ResponseLine};
 
 
-pub struct SendingResponse{
+pub struct Response{
     status_message:StatusMessage,
     status_code:StatusCode,
     headers:HashMap<String,String>,
     body:Vec<u8>
 }
 
-impl SendingResponse{
+impl Response{
     pub fn new(status_message:StatusMessage,status_code:StatusCode,headers:HashMap<String,String>,body:Vec<u8>)->Self{
         Self { status_message, status_code, headers, body}
 

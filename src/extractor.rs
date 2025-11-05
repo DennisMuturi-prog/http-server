@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::{
     parser::http_message_parser::Request,
     response::{
-        ContentType, SendingResponse, StatusCode, StatusMessage,
+        ContentType, Response, StatusCode, StatusMessage,
         get_common_headers_with_content_type_header,
     },
     routing::{HandlerFunction, RoutingMap},
@@ -143,14 +143,14 @@ pub enum RoutingError {
     SerdeUrlEncodingError(#[from] serde_urlencoded::de::Error),
 }
 pub trait IntoResponse {
-    fn into_response(self) -> SendingResponse;
+    fn into_response(self) -> Response;
 }
 
 impl IntoResponse for serde_json::Error {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let message = b"json data error";
         let headers = get_common_headers_with_content_type_header(message, ContentType::TextPlain);
-        SendingResponse::new(
+        Response::new(
             StatusMessage::BadRequest,
             StatusCode::BadRequest,
             headers,
@@ -160,10 +160,10 @@ impl IntoResponse for serde_json::Error {
 }
 
 impl IntoResponse for serde_urlencoded::de::Error {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let message = b"url encoded data error";
         let headers = get_common_headers_with_content_type_header(message, ContentType::TextPlain);
-        SendingResponse::new(
+        Response::new(
             StatusMessage::BadRequest,
             StatusCode::BadRequest,
             headers,
@@ -173,11 +173,11 @@ impl IntoResponse for serde_urlencoded::de::Error {
 }
 
 impl IntoResponse for serde_urlencoded::ser::Error {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let message = b"server serialization error";
         let headers = get_common_headers_with_content_type_header(message, ContentType::TextPlain);
 
-        SendingResponse::new(
+        Response::new(
             StatusMessage::InternalServerError,
             StatusCode::InternalServerError,
             headers,
@@ -187,10 +187,10 @@ impl IntoResponse for serde_urlencoded::ser::Error {
 }
 
 impl IntoResponse for RoutingError {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let message = b"Not Found or url encoded error";
         let headers = get_common_headers_with_content_type_header(message, ContentType::TextPlain);
-        SendingResponse::new(
+        Response::new(
             StatusMessage::BadRequest,
             StatusCode::BadRequest,
             headers,
@@ -200,13 +200,13 @@ impl IntoResponse for RoutingError {
 }
 
 impl IntoResponse for BodyContentError {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         match self {
             BodyContentError::ContentTypeMisMatch => {
                 let message = b"content type mismatch";
                 let headers =
                     get_common_headers_with_content_type_header(message, ContentType::TextPlain);
-                SendingResponse::new(
+                Response::new(
                     StatusMessage::BadRequest,
                     StatusCode::BadRequest,
                     headers,
@@ -219,7 +219,7 @@ impl IntoResponse for BodyContentError {
                 let headers =
                     get_common_headers_with_content_type_header(message, ContentType::TextPlain);
 
-                SendingResponse::new(
+                Response::new(
                     StatusMessage::BadRequest,
                     StatusCode::BadRequest,
                     headers,
@@ -230,7 +230,7 @@ impl IntoResponse for BodyContentError {
                 let message = b"content type mismatch";
                 let headers =
                     get_common_headers_with_content_type_header(message, ContentType::TextPlain);
-                SendingResponse::new(
+                Response::new(
                     StatusMessage::BadRequest,
                     StatusCode::BadRequest,
                     headers,
@@ -241,8 +241,8 @@ impl IntoResponse for BodyContentError {
     }
 }
 
-impl IntoResponse for SendingResponse {
-    fn into_response(self) -> SendingResponse {
+impl IntoResponse for Response {
+    fn into_response(self) -> Response {
         self
     }
 }
@@ -251,14 +251,14 @@ impl<T> IntoResponse for Form<T>
 where
     T: Serialize,
 {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let result = match serde_urlencoded::to_string(self.0) {
             Ok(val) => val,
             Err(err) => return err.into_response(),
         };
 
         let headers = get_common_headers_with_content_type_header(result.as_bytes(),ContentType::ApplicationUrlEncoded);
-        SendingResponse::new(
+        Response::new(
             StatusMessage::Ok,
             StatusCode::Ok,
             headers,
@@ -272,14 +272,14 @@ impl<T> IntoResponse for Json<T>
 where
     T: Serialize,
 {
-    fn into_response(self) -> SendingResponse {
+    fn into_response(self) -> Response {
         let result = match serde_json::to_string(&self.0) {
             Ok(val) => val,
             Err(err) => return err.into_response(),
         };
 
         let headers = get_common_headers_with_content_type_header(result.as_bytes(),ContentType::ApplicationJson);
-        SendingResponse::new(
+        Response::new(
             StatusMessage::Ok,
             StatusCode::Ok,
             headers,

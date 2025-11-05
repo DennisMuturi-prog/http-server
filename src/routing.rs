@@ -5,7 +5,7 @@ use matchit::Router;
 use crate::{
     extractor::{FromRequest, FromRequestBody, FromRoutingMap, IntoResponse},
     parser::http_message_parser::Request,
-    response::SendingResponse,
+    response::Response,
 };
 
 #[derive(Eq, Hash, PartialEq)]
@@ -58,7 +58,7 @@ impl<F> RoutingMap<F> {
     }
 }
 pub trait HandlerFunction<Args>: Send + Sync + 'static+Clone{
-    fn execute<F2, Args2>(self, request: Request, routing_map: Arc<RoutingMap<F2>>) -> SendingResponse
+    fn execute<F2, Args2>(self, request: Request, routing_map: Arc<RoutingMap<F2>>) -> Response
     where
         F2: HandlerFunction<Args2>;
 }
@@ -74,7 +74,7 @@ where
         self,
         request: Request,
         routing_map: Arc<RoutingMap<F2>>,
-    ) -> SendingResponse
+    ) -> Response
     where
         F2: HandlerFunction<Args>,
     {

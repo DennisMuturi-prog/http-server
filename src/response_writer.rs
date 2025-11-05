@@ -103,25 +103,25 @@ pub struct Body<'a> {
 }
 
 impl<'a> Body<'a> {
-    pub fn write_body_plain_text(self,body:&str)->IoResult<Response >{
+    pub fn write_body_plain_text(self,body:&str)->IoResult<ManualResponse >{
         let mut body_bytes=Vec::<u8>::new();
         let content_length_header=format!("Content-Length: {}\r\n\r\n",body.len());
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
         self.connection.write_all(&body_bytes)?;
-        Ok(Response{})
+        Ok(ManualResponse{})
     }
-    pub fn write_body_html(self,body:&str)->IoResult<Response>{
+    pub fn write_body_html(self,body:&str)->IoResult<ManualResponse>{
         let mut body_bytes=Vec::<u8>::new();
         let content_length_header=format!("Content-Length: {}\r\n\r\n",body.len());
         body_bytes.extend_from_slice(content_length_header.as_bytes());
         body_bytes.extend_from_slice(body.as_bytes());
         self.connection.write_all(&body_bytes)?;
-        Ok(Response{ })
+        Ok(ManualResponse{ })
     }
-    pub fn write_empty_body(self)->IoResult<Response>{
+    pub fn write_empty_body(self)->IoResult<ManualResponse>{
         self.connection.write_all(b"Content-Length: 0\r\n\r\n")?;
-        Ok(Response{})
+        Ok(ManualResponse{})
     }
     pub fn write_chunk(&mut self,chunk:&[u8])->IoResult<()>{
         if !self.transfer_encoding_header_written{
@@ -134,9 +134,9 @@ impl<'a> Body<'a> {
         self.connection.write_all(b"\r\n")?;
         Ok(())
     }
-    pub fn write_chunked_body_done(&mut self)->IoResult<Response>{
+    pub fn write_chunked_body_done(&mut self)->IoResult<ManualResponse>{
         self.connection.write_all(b"0\r\n\r\n")?;
-        Ok(Response {})
+        Ok(ManualResponse {})
     }
    
 }
@@ -171,7 +171,7 @@ impl<'a> ChunkedBodyWithTrailerHeaders<'a> {
         self.connection.write_all(b"0\r\n")?;
         Ok(())
     }
-    pub fn write_trailer_headers(self,trailer_headers:HashMap<&str,&str>)->IoResult<Response>{
+    pub fn write_trailer_headers(self,trailer_headers:HashMap<&str,&str>)->IoResult<ManualResponse>{
         let mut headers_response = String::new();       
         for (key, value) in trailer_headers {
             headers_response.push_str(key);
@@ -181,12 +181,12 @@ impl<'a> ChunkedBodyWithTrailerHeaders<'a> {
         }
         headers_response.push_str("\r\n");
         self.connection.write_all(headers_response.as_bytes())?;
-        Ok( Response {  })
+        Ok( ManualResponse {  })
 
     }
 
 
 }
 
-pub struct Response{
+pub struct ManualResponse{
 }
