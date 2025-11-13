@@ -92,13 +92,13 @@ pub struct Path<T>(pub T);
 
 pub trait FromRoutingMap {
     type Error: IntoResponse;
-    fn from_routing_map<F, Args>(
+    fn from_routing_map(
         request: &Request,
-        routing: Arc<RoutingMap<F>>,
+        routing: Arc<RoutingMap>,
     ) -> Result<Self, Self::Error>
     where
-        Self: Sized,
-        F: HandlerFunction<Args>;
+        Self: Sized;
+        
 }
 
 impl<T> FromRoutingMap for Path<T>
@@ -107,13 +107,12 @@ where
 {
     type Error = RoutingError;
 
-    fn from_routing_map<F, Args>(
+    fn from_routing_map(
         request: &Request,
-        routing: Arc<RoutingMap<F>>,
+        routing: Arc<RoutingMap>,
     ) -> Result<Self, Self::Error>
     where
         Self: Sized,
-        F: HandlerFunction<Args>,
     {
         match routing.get_method_router(&request.request_method()) {
             Some(router) => {
