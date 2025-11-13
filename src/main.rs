@@ -8,8 +8,18 @@ fn main() -> IoResult<()> {
     
     let mut server = Server::serve(8000, 10)?;
     server.post("/{id}/{name}/hello", new_handler).unwrap();
+    server.get("/", root).unwrap();
     server.listen();
     Ok(())
+}
+
+fn root()->impl IntoResponse{
+    let new_username=User{
+        username:"root".to_string(),
+        password:"tree".to_string()
+    };
+    Json(new_username)
+
 }
 
 fn new_handler(Query(user):Query<User>,Path(user_info):Path<UserInfo>,Form(user2):Form<User>)->impl IntoResponse{
