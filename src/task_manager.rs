@@ -78,9 +78,7 @@ impl Worker {
     }
 }
 
-pub fn handle<F,Args>(mut connection: TcpStream, custom_handler: Arc<RoutingMap<F>>) -> IoResult<()>
-where
-    F: HandlerFunction<Args>,
+pub fn handle(mut connection: TcpStream, custom_handler: Arc<RoutingMap>) -> IoResult<()>
 {
     let request_parser = Parser::new(FirstLineRequestParser::default());
     match request_parser.parse(&mut connection) {
@@ -103,7 +101,7 @@ where
 
                 },
             };
-            let sending_response=handler_function.execute(request, custom_handler);
+            let sending_response=handler_function.call(request, custom_handler);
             send_response_to_network(connection, sending_response)?;
             Ok(())
         }
