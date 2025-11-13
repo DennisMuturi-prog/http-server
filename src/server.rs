@@ -2,16 +2,16 @@ use std::{
     io::Result as IoResult, net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs}, sync::Arc
 };
 use crate::{
-    parser:: first_line_parser::{FirstLineRequestParser, FirstLineResponseParser}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{handle, TaskManager}
+    extractor::IntoResponse, parser:: first_line_parser::{FirstLineRequestParser, FirstLineResponseParser}, proxy::{ProxyParser, RequestPartProxySender, ResponsePartProxySender}, routing::{HandlerFunction, HttpVerb, RoutingMap}, task_manager::{TaskManager, handle}
 };
 
-pub struct Server<F> {
+pub struct Server {
     listener: TcpListener,
     no_of_threads: usize,
-    router:RoutingMap<F>
+    router:RoutingMap
 }
 
-impl<F> Server<F>
+impl Server
 {
     pub fn serve(port: u16, no_of_threads: usize) -> IoResult<Self> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
@@ -21,23 +21,31 @@ impl<F> Server<F>
             router:RoutingMap::new()
         })
     }
-    pub fn post<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
-    where F:HandlerFunction<Args>{
+    pub fn post<Args,I,F>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args,I>,
+    I:Send + Sync +'static,
+    I:IntoResponse,
+    Args:Send + Sync +'static{
         self.router.add_handler(HttpVerb::POST, handler, route)?;
         Ok(())
     }
-    pub fn get<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
-    where F:HandlerFunction<Args>{
+    pub fn get<Args,I,F>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args,I>,
+    I:Send + Sync +'static,
+    Args:Send + Sync +'static,
+    I:IntoResponse{
         self.router.add_handler(HttpVerb::GET, handler, route)?;
         Ok(())
     }
-    pub fn delete<Args>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
-    where F:HandlerFunction<Args>{
+    pub fn delete<Args,I,F>(&mut self,route:&'static str,handler: F)->Result<(),matchit::InsertError>
+    where F:HandlerFunction<Args,I>,
+    I:IntoResponse+Send + Sync +'static,
+    Args:Send + Sync +'static{
         self.router.add_handler(HttpVerb::DELETE, handler, route)?;
         Ok(())
     }
-    pub fn listen<Args>(self) 
-    where F:HandlerFunction<Args>{
+    pub fn listen(self) 
+    {
         let task_manager = TaskManager::new(self.no_of_threads);
         let routing_map=Arc::new(self.router);
         for stream in self.listener.incoming() {
