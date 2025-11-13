@@ -98,8 +98,8 @@ where
 {
     fn execute(
         &self,
-        request: Request,
-        routing_map: Arc<RoutingMap>,
+        _: Request,
+        _: Arc<RoutingMap>,
     ) -> Response
     {  
         self().into_response()
