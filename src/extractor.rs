@@ -9,7 +9,7 @@ use crate::{
         ContentType, Response, StatusCode, StatusMessage,
         get_common_headers_with_content_type_header,
     },
-    routing::{HandlerFunction, RoutingMap},
+    routing::{ RoutingMap},
 };
 
 pub struct Json<T>(pub T);
