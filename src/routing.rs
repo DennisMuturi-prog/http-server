@@ -39,13 +39,13 @@ impl RoutingMap {
         router.insert(route, Box::new(Handler::new(handler)))?;
         Ok(())
     }
-    pub fn get_handler(&self,http_verb:&HttpVerb,route:&str) ->Option<Box<dyn Service>> 
+    pub fn get_handler(&self,http_verb:&HttpVerb,route:&str) ->Option<&dyn Service> 
     
     {
         let method_route=self.0.get(http_verb)?;
         let matched_route = method_route.at(route).ok()?;
         let handler_function=matched_route.value;
-        Some(handler_function.clone_box())
+        Some(handler_function.as_ref())
     }
     pub fn get_method_router(&self,http_verb: &HttpVerb)->Option<&Router<Box<dyn Service>>>
     {
