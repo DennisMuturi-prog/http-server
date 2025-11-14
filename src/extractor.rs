@@ -1,4 +1,5 @@
-use std::sync::Arc;
+
+use std::io;
 
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -9,7 +10,6 @@ use crate::{
         ContentType, Response, StatusCode, StatusMessage,
         get_common_headers_with_content_type_header,
     },
-    routing::{ RoutingMap},
 };
 
 pub struct Json<T>(pub T);
@@ -90,31 +90,19 @@ where
 
 pub struct Path<T>(pub T);
 
-pub trait FromRoutingMap {
-    type Error: IntoResponse;
-    fn from_routing_map(
-        request: &Request,
-        routing: Arc<RoutingMap>,
-    ) -> Result<Self, Self::Error>
-    where
-        Self: Sized;
-        
-}
-
-impl<T> FromRoutingMap for Path<T>
+impl<T> FromRequest for Path<T>
 where
     T: DeserializeOwned,
 {
     type Error = RoutingError;
 
-    fn from_routing_map(
-        request: &Request,
-        routing: Arc<RoutingMap>,
+    fn from_request(
+        request: &Request
     ) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        match routing.get_method_router(&request.request_method()) {
+        match request.routing().get_method_router(&request.request_method()) {
             Some(router) => {
                 let matched_route = router.at(request.request_path())?;
                 let params = matched_route.params;
@@ -165,6 +153,19 @@ impl IntoResponse for serde_urlencoded::de::Error {
         Response::new(
             StatusMessage::BadRequest,
             StatusCode::BadRequest,
+            headers,
+            message.to_vec(),
+        )
+    }
+}
+
+impl IntoResponse for io::Error {
+    fn into_response(self) -> Response {
+        let message = b"an error occurred in the server sending favicon";
+        let headers = get_common_headers_with_content_type_header(message, ContentType::TextPlain);
+        Response::new(
+            StatusMessage::InternalServerError,
+            StatusCode::InternalServerError,
             headers,
             message.to_vec(),
         )
