@@ -8,7 +8,7 @@ use std::{
 };
 
 
-use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser, Request}}, response::{get_common_headers, get_preflight_headers, write_headers, write_response_headers, write_response_status_line, write_status_line, ContentType, Response, StatusCode}, response_writer::ResponseWriter, routing::{HttpVerb, RoutingMap}};
+use crate::{parser::{ first_line_parser::FirstLineRequestParser, http_message_parser::{Parser}}, response::{get_common_headers, get_preflight_headers, write_headers, write_response_headers, write_response_status_line, write_status_line, ContentType, Response, StatusCode}, response_writer::ResponseWriter, routing::{HttpVerb, RoutingMap}};
 
 
 
@@ -83,7 +83,8 @@ pub fn handle(mut connection: TcpStream, custom_handler: Arc<RoutingMap>) -> IoR
     let request_parser = Parser::new(FirstLineRequestParser::default());
     match request_parser.parse(&mut connection) {
         Ok(payload_request) => {
-            let request=Request::from(payload_request);
+            let routing=Arc::clone(&custom_handler);
+            let request=payload_request.from(routing);
             if request.request_method() == HttpVerb::OPTIONS {
                 write_status_line(&mut connection, StatusCode::Ok)?;
                 let headers = get_preflight_headers();
@@ -101,7 +102,7 @@ pub fn handle(mut connection: TcpStream, custom_handler: Arc<RoutingMap>) -> IoR
 
                 },
             };
-            let sending_response=handler_function.call(request, custom_handler);
+            let sending_response=handler_function.call(request);
             send_response_to_network(connection, sending_response)?;
             Ok(())
         }
