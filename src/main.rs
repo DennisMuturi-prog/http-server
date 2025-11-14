@@ -2,10 +2,9 @@ use std::{fs, io::Result as IoResult};
 
 use serde::{Deserialize, Serialize};
 use single_threaded_server::{
-    extractor::{Form, IntoResponse, Json, Path, Query},
+    extractor::{Form, Json, Path, Query},
     response::{
-        ContentType, Response, StatusCode, StatusMessage,
-        get_common_headers_with_content_type_header,
+        ContentType, Html, IntoResponse, Response, StatusCode, StatusMessage, get_common_headers_with_content_type_header
     },
     server::Server,
 };
@@ -13,20 +12,26 @@ use single_threaded_server::{
 fn main() -> IoResult<()> {
     let mut server = Server::serve(8000, 10)?;
     server.post("/{id}/{name}/hello", new_handler).unwrap();
-    server.get("/", root).unwrap();
+    server.get("/", root_get).unwrap();
+    server.post("/", root_post).unwrap();
     server.get("/favicon.ico", favicon).unwrap();
     server.listen();
     Ok(())
 }
 
-fn root() -> impl IntoResponse {
+fn root_post() -> Json<User> {
     let new_username = User {
         username: "root".to_string(),
         password: "tree".to_string(),
     };
     Json(new_username)
 }
-fn favicon() -> impl IntoResponse {
+
+fn root_get() -> Html {
+    
+    Html::new(String::from("<h1>hello world</>"))
+}
+fn favicon() -> Response {
     let data: Vec<u8> = match fs::read("muturi.jpg") {
         Ok(val) => val,
         Err(io_error) => return io_error.into_response(),
@@ -39,7 +44,7 @@ fn new_handler(
     Query(user): Query<User>,
     Path(user_info): Path<UserInfo>,
     Form(user2): Form<User>,
-) -> impl IntoResponse {
+) -> Json<User> {
     println!(
         "form username is {} and password is {}",
         user2.username, user2.password
