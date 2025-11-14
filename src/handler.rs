@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{extractor::{FromRequest, FromRequestBody, IntoResponse}, parser::http_message_parser::Request, response::Response};
+use crate::{extractor::{FromRequest, FromRequestBody}, parser::http_message_parser::Request, response::{IntoResponse, Response}};
 
 pub trait HandlerFunction<Args>: Send + Sync + 'static+Clone{
     fn execute(&self, request: Request) -> Response;
