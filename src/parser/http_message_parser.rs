@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{ Read, Write},
+    io::{ Read, Write}, sync::Arc,
 };
 use crate::{parser::{
     chunked_body_parser::BodyParser,
@@ -10,7 +10,7 @@ use crate::{parser::{
     },
     front_from_body_parser::parse_front,
     header_parser::{ HeaderParseError, HeaderParser},
-}, routing::HttpVerb};
+}, routing::{HttpVerb, RoutingMap}};
 
 pub enum ParseError {
     NotEnoughBytes,
@@ -265,11 +265,12 @@ impl<P: FirstLineParser> Parser<P> {
 pub struct Payload<T>{
     first_line:T,
     headers:HashMap<String,String>,
-    body:Vec<u8>
+    body:Vec<u8>,
+    
 }
-impl From<Payload<RequestLine>> for Request{
-    fn from(value: Payload<RequestLine>) -> Self {
-        Self { request_line: value.first_line, headers: value.headers, body: value.body }
+impl Payload<RequestLine>{
+    pub fn from(self,routing:Arc<RoutingMap>) -> Request {
+        Request { request_line: self.first_line, headers: self.headers, body: self.body,routing }
     }
 }
 
@@ -281,16 +282,22 @@ impl From<Payload<ResponseLine>> for  Response{
 pub struct Request {
     request_line: RequestLine,
     headers: HashMap<String, String>,
-    body: Vec<u8>
+    body: Vec<u8>,
+    routing:Arc<RoutingMap>
 }
 
 impl Request {
-    pub fn new(request_line: RequestLine, headers: HashMap<String, String>, body: Vec<u8>) -> Self {
+    pub fn new(request_line: RequestLine, headers: HashMap<String, String>, body: Vec<u8>,routing:Arc<RoutingMap>) -> Self {
         Self {
             request_line,
             headers,
             body,
+            routing
         }
+    }
+    pub fn routing(&self)->Arc<RoutingMap>{
+        let routing=&self.routing;
+        Arc::clone(routing)
     }
     pub fn request_method(&self) -> HttpVerb {
         match self.request_line.method(){
