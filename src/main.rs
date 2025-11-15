@@ -15,6 +15,7 @@ fn main() -> IoResult<()> {
     server.get("/", root_get).unwrap();
     server.post("/", root_post).unwrap();
     server.get("/favicon.ico", favicon).unwrap();
+    server.get("/test/{id}/{name}", test_handler).unwrap();
     server.listen();
     Ok(())
 }
@@ -59,8 +60,22 @@ fn new_handler(
         password: "world".to_string(),
     };
     Json(new_username)
-    // let message=b"hello";
-    // SendingResponse::new(StatusMessage::Accepted,StatusCode::Ok,get_common_headers_with_content_type_header(message,ContentType::TextPlain),message.to_vec())
+}
+
+fn test_handler(
+    Query(user): Query<User>,
+    Path(user_info): Path<UserInfo>,
+) -> Json<User> {
+    println!(
+        "query username is {} and password is {}",
+        user.username, user.password
+    );
+    println!("path id is {} and name is {}", user_info.id, user_info.name);
+    let new_username = User {
+        username: user_info.id.to_string(),
+        password: user_info.name,
+    };
+    Json(new_username)
 }
 #[derive(Serialize, Deserialize)]
 struct User {
