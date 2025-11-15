@@ -54,6 +54,7 @@ where
         match request.header("content-type") {
             Some(header) => {
                 if header != "application/x-www-form-urlencoded" {
+                    println!("header is {}",header);
                     return Err(BodyContentError::ContentTypeMisMatch);
                 }
             }
@@ -117,6 +118,18 @@ where
         }
     }
 }
+
+impl<T> FromRequestBody for T
+where T:FromRequest{
+    type Error=<Self as FromRequest>::Error;
+
+    fn from_request_body(request: &Request) -> Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized {
+        Self::from_request(request)
+    }
+}
+
 
 #[derive(Error, Debug)]
 pub enum RoutingError {
