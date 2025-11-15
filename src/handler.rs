@@ -96,37 +96,39 @@ where
 }
 
 macro_rules! impl_handler {
+    // With body parameter
     (
         [$($ty:ident),*], $last:ident
     ) => {
         #[allow(non_snake_case, unused_mut)]
-        impl<F, I, $($ty,)* $last> HandlerFunction<(I, $($ty,)* $last,)> for F
+        impl<F, I, $($ty,)* $last> HandlerFunction<($($ty,)* $last,)> for F
         where
-            F: FnOnce($($ty,)* $last,) ->I + Send + Sync + 'static + Clone,
-            I:IntoResponse,
+            F: Fn($($ty,)* $last,) -> I + Send + Sync + 'static + Clone,
+            I: IntoResponse,
             $( $ty: FromRequest, )*
             $last: FromRequestBody,
         {
             fn execute(&self, request: Request) -> Response {
-                
-                    $(
-                        let $ty = match $ty::from_request(&request) {
-                                    Ok(val) => val,
-                                    Err(err) => return err.into_response(),
-                        };
-                    )*
-
-                    let $last = match $last::from_request_body(&request) {
+                $(
+                    let $ty = match $ty::from_request(&request) {
                         Ok(val) => val,
                         Err(err) => return err.into_response(),
                     };
+                )*
 
-                    self.clone()($($ty,)* $last,).into_response()
-                
+                let $last = match $last::from_request_body(&request) {
+                    Ok(val) => val,
+                    Err(err) => return err.into_response(),
+                };
+
+                self($($ty,)* $last,).into_response()
             }
         }
     };
+
 }
+
+
 
 #[rustfmt::skip]
 macro_rules! all_the_tuples {
