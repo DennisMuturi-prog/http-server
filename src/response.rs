@@ -123,7 +123,7 @@ impl IntoResponse for BodyContentError {
                 )
             }
             BodyContentError::JsonSerializationError(_) => {
-                let message = b"content type mismatch";
+                let message = b"json shape mismatch";
 
                 let headers =
                     get_common_headers_with_content_type_header(message, ContentType::TextPlain);
@@ -136,7 +136,7 @@ impl IntoResponse for BodyContentError {
                 )
             }
             BodyContentError::UrlEncodedFormSerialization(_) => {
-                let message = b"content type mismatch";
+                let message = b"bad form inputs";
                 let headers =
                     get_common_headers_with_content_type_header(message, ContentType::TextPlain);
                 Response::new(
